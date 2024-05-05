@@ -1,0 +1,50 @@
+data:
+    schema:
+        question_field: Question
+        answer_field: Response
+        target_field: target
+        context_field: Context
+    train:
+        path: /home/lkang/Downloads/kaggle_llm_prompt_recovery/nbroad-v2.csv
+    test:
+        path: /home/lkang/Downloads/kaggle_llm_prompt_recovery/nbroad-v2.csv
+
+
+tokenizer:
+    model_name: google/gemma-2b-it
+    label_name: label
+    max_length: 1024
+    tokenization_output_fields: "input_ids,token_type_ids,attention_mask,answer_attention_mask"
+    context_mask_field: "context_mask"
+    answer_mask_field: "answer_attention_mask"
+    special_token_answer_start: "[A_START]"
+    special_token_answer_end: "[A_END]"
+    special_token_start: ""
+    special_token_context_start: "[CTX_START]"
+    special_token_context_end: "[CTX_END]"
+    special_token_context_sep: "[CTX_SEP]"
+
+
+model:
+    model_name: google/gemma-2b-it
+
+training:
+    partition:
+        cv: 1
+        tvh:
+            train:
+                pct: 0.8
+                label: 0
+            validation:
+                pct: 0.2
+                label: 1
+    num_epoch: 1
+    num_gradient_update_batch: 4
+    random_seed: 123
+    enable_grad_scale: true
+    learning_rate: 7.0e-06
+    min_learning_rate: 1e-6
+    train_batch_size: 4
+    eval_batch_size: 4
+    holdout_batch_size: 4
+    model_output_path: /kaggle/working/model.bin
