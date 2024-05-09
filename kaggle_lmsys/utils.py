@@ -22,6 +22,19 @@ def clean_data(
     return data
 
 
+def get_tokenization_length(
+    text: str,
+    tokenizer: AutoTokenizer,
+    max_length: int,
+) -> int:
+    tokenized_outputs = tokenizer(
+        text,
+        max_length=max_length,
+        truncation=True,
+    )
+    return len(tokenized_outputs["input_ids"])
+
+
 def tokenization(
     record: Dict,
     tokenizer: AutoTokenizer,
