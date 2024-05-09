@@ -6,24 +6,20 @@ import click
 import numpy as np
 import torch
 from datasets import Dataset
-from transformers import AutoTokenizer
-from transformers import TrainingArguments
-
-from transformers import AutoModelForSequenceClassification
-from transformers import DataCollatorWithPadding
-from transformers import GemmaTokenizerFast
 from huggingface_hub import login as hf_login
-from transformers import BitsAndBytesConfig
-from peft import get_peft_model
 from peft import LoraConfig
-from trl import SFTTrainer
-
-
+from peft import get_peft_model
 from train_utils import add_target
 from train_utils import get_max_train_steps
+from transformers import AutoModelForSequenceClassification
+from transformers import AutoTokenizer
+from transformers import BitsAndBytesConfig
+from transformers import DataCollatorWithPadding
+from transformers import GemmaTokenizerFast
+from transformers import TrainingArguments
+from trl import SFTTrainer
 from utils import clean_data
-from utils import tokenization
-
+from utils import tokenization_separate
 
 logger = logging.getLogger(__name__)
 logger.addHandler(logging.StreamHandler(sys.stdout))
@@ -42,7 +38,7 @@ hf_token: str = "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"
 
 
 @click.command()
-@click.option('--for_test', type=bool, default=True, required=True)
+@click.option("--for_test", type=bool, default=True, required=True)
 def go(for_test: bool) -> None:
     data_config = {
         "train_data_path": "/kaggle/input/lmsys-chatbot-arena/train.csv",
@@ -67,15 +63,18 @@ def go(for_test: bool) -> None:
         "num_gradient_update_batch": 4,
         "num_epoch": 1,
         "output_path": "model_output",
-
     }
 
     data_path = Path(data_config["train_data_path"])
     input_fields = [data_config["prompt"], data_config["resp_a"], data_config["resp_b"]]
     data = clean_data(data_path, input_fields)
     if for_test:
-        data = data.iloc[: 100, :]
-    target_fields = [data_config["resp_a_win"], data_config["resp_b_win"], data_config["resp_tie"]]
+        data = data.iloc[:100, :]
+    target_fields = [
+        data_config["resp_a_win"],
+        data_config["resp_b_win"],
+        data_config["resp_tie"],
+    ]
     add_target_field = data_config["added_target_field"]
     data = add_target(data, *target_fields, add_target_field)
     dataset = Dataset.from_pandas(data)
@@ -86,20 +85,23 @@ def go(for_test: bool) -> None:
     )
     tokenization_args = {
         "tokenizer": tokenizer,
-        "max_length": model_config["max_length"],
-        "prompt_field": data_config["prompt"],
         "resp_a_field": data_config["resp_a"],
         "resp_b_field": data_config["resp_b"],
+        "max_token_length": 512,
+        "max_resp_a_token_length": 255,
+        "max_resp_b_token_length": 255,
         "target_field": add_target_field,
     }
     dataset = dataset.map(
-        function=tokenization,
+        function=tokenization_separate,
         batched=False,
         fn_kwargs=tokenization_args,
         remove_columns=dataset.column_names,
     )
     dataset = dataset.train_test_split(
-        test_size=model_config["eval_pct"], seed=SEED, generator=numpy_gen,
+        test_size=model_config["eval_pct"],
+        seed=SEED,
+        generator=numpy_gen,
     )
     dataset_train: Dataset = dataset["train"]
     dataset_eval: Dataset = dataset["test"]
@@ -122,7 +124,7 @@ def go(for_test: bool) -> None:
         load_in_4bit=True,
         bnb_4bit_quant_type="nf4",
         bnb_4bit_use_double_quant=True,
-        bnb_4bit_compute_dtype=torch.bfloat16
+        bnb_4bit_compute_dtype=torch.bfloat16,
     )
     model = AutoModelForSequenceClassification.from_pretrained(
         model_config["model_name"],
@@ -156,7 +158,8 @@ def go(for_test: bool) -> None:
             optim="paged_adamw_8bit",
             save_strategy="epoch",
             report_to="none",
-            max_steps=model_config["num_epoch"] * get_max_train_steps(train_size, train_batch_size),
+            max_steps=model_config["num_epoch"]
+            * get_max_train_steps(train_size, train_batch_size),
         ),
         max_seq_length=model_config["max_length"],
         data_collator=data_collator,
@@ -165,7 +168,9 @@ def go(for_test: bool) -> None:
 
     # save the entire peft model
     merged_model = peft_model.merge_and_unload()
-    merged_model.save_pretrained(model_output_dir, safe_serialization=True, max_shard_size="2GB")
+    merged_model.save_pretrained(
+        model_output_dir, safe_serialization=True, max_shard_size="2GB"
+    )
 
 
 if __name__ == "__main__":

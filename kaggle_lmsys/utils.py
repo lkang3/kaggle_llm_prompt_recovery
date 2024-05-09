@@ -1,10 +1,11 @@
+from pathlib import Path
 from typing import Dict
 from typing import List
 
-from pathlib import Path
+import numpy as np
 import pandas as pd
-from transformers import AutoTokenizer
 import torch
+from transformers import AutoTokenizer
 
 
 def get_device() -> torch.device:
@@ -18,7 +19,7 @@ def clean_data(
     data = pd.read_csv(path)
     data.fillna("", inplace=True)
     for field_name in field_names:
-        data[field_name] = data[field_name].apply(lambda x: x[len('["'): x.find('"]')])
+        data[field_name] = data[field_name].apply(lambda x: x[len('["') : x.find('"]')])
     return data
 
 
@@ -60,3 +61,84 @@ def tokenization(
         processed_record["label"] = target_value
 
     return processed_record
+
+
+def tokenization_separate(
+    record: Dict,
+    tokenizer: AutoTokenizer,
+    max_token_length: int,
+    resp_a_field: str,
+    max_resp_a_token_length: int,
+    resp_b_field: str,
+    max_resp_b_token_length: int,
+    target_field: str,
+) -> Dict:
+    if max_resp_a_token_length + max_resp_b_token_length + 1 > max_token_length:
+        raise ValueError()
+
+    resp_a: str = record[resp_a_field]
+    resp_b: str = record[resp_b_field]
+    target_value = record[target_field] if target_field in record else None
+
+    input_ids_key = "input_ids"
+    token_type_ids_key = "token_type_ids"
+    attention_mask_key = "attention_mask"
+    sep_token = tokenizer(tokenizer.sep_token, add_special_tokens=False)
+    pad_token = tokenizer(tokenizer.pad_token, add_special_tokens=False)
+
+    resp_a = tokenizer(
+        resp_a,
+        max_length=max_resp_a_token_length,
+        truncation=True,
+    )
+    resp_b = tokenizer(
+        resp_b,
+        max_length=max_resp_b_token_length,
+        truncation=True,
+    )
+
+    token_input_ids = np.concatenate(
+        (
+            np.array(resp_a[input_ids_key], dtype=np.int16),
+            np.array(sep_token[input_ids_key]),
+            np.array(resp_b[input_ids_key], dtype=np.int16),
+        )
+    )
+    if len(token_input_ids) < max_token_length:
+        tmp = np.zeros(max_token_length, dtype=np.int16)
+        tmp.fill(pad_token[input_ids_key][0])
+        tmp[: len(token_input_ids)] = token_input_ids
+        token_input_ids = tmp
+    token_type_ids = np.concatenate(
+        (
+            np.array(resp_a[token_type_ids_key], dtype=np.int16),
+            np.array(sep_token[token_type_ids_key]),
+            np.array(resp_b[token_type_ids_key], dtype=np.int16),
+        )
+    )
+    if len(token_type_ids) < max_token_length:
+        tmp = np.zeros(max_token_length, dtype=np.int16)
+        tmp.fill(pad_token[input_ids_key][0])
+        tmp[: len(token_type_ids)] = token_type_ids
+        token_type_ids = tmp
+    attention_mask = np.concatenate(
+        (
+            np.array(resp_a[attention_mask_key], dtype=np.int16),
+            np.array(sep_token[attention_mask_key]),
+            np.array(resp_b[attention_mask_key], dtype=np.int16),
+        )
+    )
+    if len(attention_mask) < max_token_length:
+        tmp = np.zeros(max_token_length, dtype=np.int16)
+        tmp.fill(pad_token[input_ids_key][0])
+        tmp[: len(attention_mask)] = attention_mask
+        attention_mask = tmp
+
+    outputs = {
+        input_ids_key: token_input_ids,
+        token_type_ids_key: token_type_ids,
+        attention_mask_key: attention_mask,
+    }
+    if target_value is not None:
+        outputs["label"] = target_value
+    return outputs
