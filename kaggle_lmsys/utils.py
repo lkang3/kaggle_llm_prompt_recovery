@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 import torch
 from transformers import AutoTokenizer
+from transformers import DataCollatorWithPadding
 
 
 def get_device() -> torch.device:
@@ -58,7 +59,7 @@ def tokenization(
         truncation=True,
     )
     if target_value is not None:
-        processed_record["label"] = target_value
+        processed_record[target_field] = target_value
 
     return processed_record
 
@@ -97,39 +98,40 @@ def tokenization_separate(
         truncation=True,
     )
 
+    output_dtype = np.int32
     token_input_ids = np.concatenate(
         (
-            np.array(resp_a[input_ids_key], dtype=np.int16),
+            np.array(resp_a[input_ids_key], dtype=output_dtype),
             np.array(sep_token[input_ids_key]),
-            np.array(resp_b[input_ids_key], dtype=np.int16),
+            np.array(resp_b[input_ids_key], dtype=output_dtype),
         )
     )
     if len(token_input_ids) < max_token_length:
-        tmp = np.zeros(max_token_length, dtype=np.int16)
+        tmp = np.zeros(max_token_length, dtype=output_dtype)
         tmp.fill(pad_token[input_ids_key][0])
         tmp[: len(token_input_ids)] = token_input_ids
         token_input_ids = tmp
     token_type_ids = np.concatenate(
         (
-            np.array(resp_a[token_type_ids_key], dtype=np.int16),
+            np.array(resp_a[token_type_ids_key], dtype=output_dtype),
             np.array(sep_token[token_type_ids_key]),
-            np.array(resp_b[token_type_ids_key], dtype=np.int16),
+            np.array(resp_b[token_type_ids_key], dtype=output_dtype),
         )
     )
     if len(token_type_ids) < max_token_length:
-        tmp = np.zeros(max_token_length, dtype=np.int16)
+        tmp = np.zeros(max_token_length, dtype=output_dtype)
         tmp.fill(pad_token[input_ids_key][0])
         tmp[: len(token_type_ids)] = token_type_ids
         token_type_ids = tmp
     attention_mask = np.concatenate(
         (
-            np.array(resp_a[attention_mask_key], dtype=np.int16),
+            np.array(resp_a[attention_mask_key], dtype=output_dtype),
             np.array(sep_token[attention_mask_key]),
-            np.array(resp_b[attention_mask_key], dtype=np.int16),
+            np.array(resp_b[attention_mask_key], dtype=output_dtype),
         )
     )
     if len(attention_mask) < max_token_length:
-        tmp = np.zeros(max_token_length, dtype=np.int16)
+        tmp = np.zeros(max_token_length, dtype=output_dtype)
         tmp.fill(pad_token[input_ids_key][0])
         tmp[: len(attention_mask)] = attention_mask
         attention_mask = tmp
@@ -140,5 +142,14 @@ def tokenization_separate(
         attention_mask_key: attention_mask,
     }
     if target_value is not None:
-        outputs["label"] = target_value
+        outputs[target_field] = target_value
     return outputs
+
+
+class Collator(DataCollatorWithPadding):
+    device = get_device()
+
+    def __call__(self, features):
+        batch = super().__call__(features)
+        batch = {k: v.to(self.device) for k, v in batch.items()}
+        return batch
