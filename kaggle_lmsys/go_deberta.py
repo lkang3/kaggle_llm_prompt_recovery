@@ -12,7 +12,6 @@ from peft import get_peft_model
 from train_utils import add_target
 from transformers import AutoModelForSequenceClassification
 from transformers import AutoTokenizer
-from transformers import BitsAndBytesConfig
 from transformers import GemmaTokenizerFast
 from transformers import TrainingArguments
 from transformers import Trainer
@@ -62,7 +61,6 @@ def go(for_test: bool) -> None:
         "max_length": 256,
         "learning_rate": 7.0e-06,
         "train_batch_size": 4,
-        "num_gradient_update_batch": 4,
         "num_epoch": 1,
         "output_path": "model_output",
     }
@@ -131,7 +129,6 @@ def go(for_test: bool) -> None:
         eval_dataset=dataset_eval,
         args=TrainingArguments(
             per_device_train_batch_size=train_batch_size,
-            gradient_accumulation_steps=model_config["num_gradient_update_batch"],
             num_train_epochs=model_config["num_epoch"],
             warmup_steps=0.03,
             learning_rate=2e-4,
@@ -140,12 +137,14 @@ def go(for_test: bool) -> None:
             optim="paged_adamw_8bit",
             save_strategy="epoch",
             report_to="none",
+            dataloader_pin_memory=False,
         ),
         data_collator=data_collator,
     )
     trainer.train()
 
     # save the entire peft model
+    peft_model = peft_model.merge_and_unload()
     peft_model.save_pretrained(
         model_output_dir, safe_serialization=True, max_shard_size="2GB"
     )
