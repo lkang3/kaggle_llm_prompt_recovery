@@ -107,15 +107,15 @@ def go(for_test: bool) -> None:
     dataset_eval: Dataset = dataset["test"]
 
     # modeling setup
-    lora_config = LoraConfig(
-        r=8,
-        task_type="SEQ_CLS",
-    )
     model = AutoModelForSequenceClassification.from_pretrained(
         model_config["model_name"],
         num_labels=model_config["num_labels"],
     )
-    peft_model = get_peft_model(model, peft_config=lora_config)
+    lora_config = LoraConfig(
+        r=8,
+        task_type="SEQ_CLS",
+    )
+    model = get_peft_model(model, peft_config=lora_config)
     torch.cuda.empty_cache()
     data_collator = Collator(
         tokenizer,
@@ -124,7 +124,7 @@ def go(for_test: bool) -> None:
     train_batch_size: int = model_config["train_batch_size"]
     model_output_dir: str = model_config["output_path"]
     trainer = Trainer(
-        model=peft_model,
+        model=model,
         train_dataset=dataset_train,
         eval_dataset=dataset_eval,
         args=TrainingArguments(
@@ -144,10 +144,9 @@ def go(for_test: bool) -> None:
     trainer.train()
 
     # save the entire peft model
-    peft_model = peft_model.merge_and_unload()
-    peft_model.save_pretrained(
-        model_output_dir, safe_serialization=True, max_shard_size="2GB"
-    )
+    tokenizer.save_pretrained(model_output_dir)
+    model = model.merge_and_unload()
+    model.save_pretrained(model_output_dir)
 
 
 if __name__ == "__main__":
