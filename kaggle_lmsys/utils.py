@@ -111,11 +111,15 @@ def tokenization_separate(
         tmp.fill(pad_token[input_ids_key][0])
         tmp[: len(token_input_ids)] = token_input_ids
         token_input_ids = tmp
+    resp_a_token_type_ids = np.array(resp_a[token_type_ids_key], dtype=output_dtype)
+    resp_a_token_type_ids.fill(0)
+    resp_b_token_type_ids = np.array(resp_b[token_type_ids_key], dtype=output_dtype)
+    resp_b_token_type_ids.fill(1)
     token_type_ids = np.concatenate(
         (
-            np.array(resp_a[token_type_ids_key], dtype=output_dtype),
-            np.array(sep_token[token_type_ids_key]),
-            np.array(resp_b[token_type_ids_key], dtype=output_dtype),
+            resp_a_token_type_ids,
+            np.array([0]),
+            resp_b_token_type_ids,
         )
     )
     if len(token_type_ids) < max_token_length:
