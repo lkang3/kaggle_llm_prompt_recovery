@@ -4,6 +4,8 @@ from pathlib import Path
 
 import click
 import numpy as np
+import peft.peft_model
+from peft.peft_model import PeftModel
 import torch
 from datasets import Dataset
 from huggingface_hub import login as hf_login
@@ -15,6 +17,7 @@ from transformers import AutoTokenizer
 from transformers import GemmaTokenizerFast
 from transformers import TrainingArguments
 from transformers import Trainer
+from transformers import DebertaConfig
 from utils import clean_data
 from utils import Collator
 from utils import tokenization_separate
@@ -143,9 +146,10 @@ def go(for_test: bool) -> None:
     )
     trainer.train()
 
-    # save the entire peft model
     tokenizer.save_pretrained(model_output_dir)
-    model = model.merge_and_unload()
+    if isinstance(model, PeftModel):
+        # save the entire adapter model
+        model = model.merge_and_unload()
     model.save_pretrained(model_output_dir)
 
 
