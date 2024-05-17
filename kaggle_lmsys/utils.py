@@ -68,15 +68,20 @@ def tokenization_separate(
     record: Dict,
     tokenizer: AutoTokenizer,
     max_token_length: int,
+    prompt_field: str,
+    max_prompt_token_length: int,
     resp_a_field: str,
     max_resp_a_token_length: int,
     resp_b_field: str,
     max_resp_b_token_length: int,
     target_field: str,
 ) -> Dict:
-    if max_resp_a_token_length + max_resp_b_token_length + 1 > max_token_length:
+    if (
+        max_prompt_token_length + max_resp_a_token_length + max_resp_b_token_length
+    ) > max_token_length:
         raise ValueError()
 
+    prompt: str = record[prompt_field]
     resp_a: str = record[resp_a_field]
     resp_b: str = record[resp_b_field]
     target_value = record[target_field] if target_field in record else None
@@ -84,9 +89,13 @@ def tokenization_separate(
     input_ids_key = "input_ids"
     token_type_ids_key = "token_type_ids"
     attention_mask_key = "attention_mask"
-    sep_token = tokenizer(tokenizer.sep_token, add_special_tokens=False)
     pad_token = tokenizer(tokenizer.pad_token, add_special_tokens=False)
 
+    prompt = tokenizer(
+        prompt,
+        max_length=max_prompt_token_length,
+        truncation=True,
+    )
     resp_a = tokenizer(
         resp_a,
         max_length=max_resp_a_token_length,
@@ -101,8 +110,8 @@ def tokenization_separate(
     output_dtype = np.int32
     token_input_ids = np.concatenate(
         (
+            np.array(prompt[input_ids_key], dtype=output_dtype),
             np.array(resp_a[input_ids_key], dtype=output_dtype),
-            np.array(sep_token[input_ids_key]),
             np.array(resp_b[input_ids_key], dtype=output_dtype),
         )
     )
@@ -111,14 +120,17 @@ def tokenization_separate(
         tmp.fill(pad_token[input_ids_key][0])
         tmp[: len(token_input_ids)] = token_input_ids
         token_input_ids = tmp
+
+    prompt_token_type_ids = np.array(prompt[token_type_ids_key], dtype=output_dtype)
+    prompt_token_type_ids.fill(0)
     resp_a_token_type_ids = np.array(resp_a[token_type_ids_key], dtype=output_dtype)
-    resp_a_token_type_ids.fill(0)
+    resp_a_token_type_ids.fill(1)
     resp_b_token_type_ids = np.array(resp_b[token_type_ids_key], dtype=output_dtype)
-    resp_b_token_type_ids.fill(1)
+    resp_b_token_type_ids.fill(2)
     token_type_ids = np.concatenate(
         (
+            prompt_token_type_ids,
             resp_a_token_type_ids,
-            np.array([0]),
             resp_b_token_type_ids,
         )
     )
@@ -129,8 +141,8 @@ def tokenization_separate(
         token_type_ids = tmp
     attention_mask = np.concatenate(
         (
+            np.array(prompt[attention_mask_key], dtype=output_dtype),
             np.array(resp_a[attention_mask_key], dtype=output_dtype),
-            np.array(sep_token[attention_mask_key]),
             np.array(resp_b[attention_mask_key], dtype=output_dtype),
         )
     )

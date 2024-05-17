@@ -4,7 +4,7 @@ from pathlib import Path
 
 import click
 import numpy as np
-import peft.peft_model
+import pandas as pd
 from peft.peft_model import PeftModel
 import torch
 from datasets import Dataset
@@ -12,12 +12,12 @@ from huggingface_hub import login as hf_login
 from peft import LoraConfig
 from peft import get_peft_model
 from train_utils import add_target
+from train_utils import swap_responses
 from transformers import AutoModelForSequenceClassification
 from transformers import AutoTokenizer
 from transformers import GemmaTokenizerFast
 from transformers import TrainingArguments
 from transformers import Trainer
-from transformers import DebertaConfig
 from utils import clean_data
 from utils import Collator
 from utils import tokenization_separate
@@ -73,6 +73,10 @@ def go(for_test: bool) -> None:
     data = clean_data(data_path, input_fields)
     if for_test:
         data = data.iloc[:100, :]
+    data_non_tie = data.loc[data[data_config["resp_tie"]] == 0, :]
+    data_non_tie = data_non_tie.apply(swap_responses, axis=1)
+    data = pd.concat((data, data_non_tie))
+
     target_fields = [
         data_config["resp_a_win"],
         data_config["resp_b_win"],
@@ -88,9 +92,11 @@ def go(for_test: bool) -> None:
     )
     tokenization_args = {
         "tokenizer": tokenizer,
+        "prompt_field": data_config["prompt"],
         "resp_a_field": data_config["resp_a"],
         "resp_b_field": data_config["resp_b"],
-        "max_token_length": 512,
+        "max_token_length": 574,
+        "max_prompt_token_length": 64,
         "max_resp_a_token_length": 255,
         "max_resp_b_token_length": 255,
         "target_field": add_target_field,
