@@ -18,10 +18,14 @@ from transformers import AutoTokenizer
 from transformers import GemmaTokenizerFast
 from transformers import TrainingArguments
 from transformers import Trainer
+from transformers import AutoConfig
 from utils import clean_data
 from utils import Collator
 from utils import tokenization_separate
 from utils import get_device
+from models import CustomizedDetertaConfig
+from models import CustomizedDetertaClassifier
+from transformers import DebertaForSequenceClassification
 
 logger = logging.getLogger(__name__)
 logger.addHandler(logging.StreamHandler(sys.stdout))
@@ -73,9 +77,6 @@ def go(for_test: bool) -> None:
     data = clean_data(data_path, input_fields)
     if for_test:
         data = data.iloc[:100, :]
-    data_non_tie = data.loc[data[data_config["resp_tie"]] == 0, :]
-    data_non_tie = data_non_tie.apply(swap_responses, axis=1)
-    data = pd.concat((data, data_non_tie))
 
     target_fields = [
         data_config["resp_a_win"],
@@ -116,15 +117,10 @@ def go(for_test: bool) -> None:
     dataset_eval: Dataset = dataset["test"]
 
     # modeling setup
-    model = AutoModelForSequenceClassification.from_pretrained(
-        model_config["model_name"],
+    model = CustomizedDetertaClassifier.from_pretrained(
+        "microsoft/deberta-base",
         num_labels=model_config["num_labels"],
     )
-    lora_config = LoraConfig(
-        r=8,
-        task_type="SEQ_CLS",
-    )
-    model = get_peft_model(model, peft_config=lora_config)
     torch.cuda.empty_cache()
     data_collator = Collator(
         tokenizer,

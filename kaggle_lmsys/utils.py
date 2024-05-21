@@ -1,6 +1,7 @@
 from pathlib import Path
 from typing import Dict
 from typing import List
+from typing import Optional
 
 import numpy as np
 import pandas as pd
@@ -35,6 +36,21 @@ def get_tokenization_length(
         truncation=True,
     )
     return len(tokenized_outputs["input_ids"])
+
+
+def simple_tokenization(
+    batch_text_records: List,
+    tokenizer: AutoTokenizer,
+    max_length: int,
+    device: torch.device,
+    return_tensors: Optional[str] = "pt",
+) -> List:
+    return tokenizer(
+        batch_text_records,
+        max_length=max_length,
+        truncation=True,
+        return_tensors=return_tensors,
+    ).to(device)
 
 
 def tokenization(

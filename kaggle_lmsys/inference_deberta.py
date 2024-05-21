@@ -5,13 +5,13 @@ import torch
 import numpy as np
 import pandas as pd
 from datasets import Dataset
-from transformers import AutoModelForSequenceClassification
 from transformers import AutoTokenizer
-from transformers import DataCollatorWithPadding
 
 from utils import clean_data
-from utils import tokenization
+from utils import tokenization_separate
 from utils import get_device
+from utils import Collator
+from models import CustomizedDetertaClassifier
 
 
 SEED = 123
@@ -52,15 +52,16 @@ def go(for_test: bool):
     }
     inference_config = {
         "data_path": "/kaggle/input/lmsys-chatbot-arena/test.csv",
-        "tokenizer_path": "/kaggle/input/lmsys-model/model_output/checkpoint-2",
-        "model_path": "/kaggle/input/lmsys-model/model_output/",
+        "tokenizer_path": "/kaggle/input/lmsys-go-deberta-model-outputs/model_output/",
+        "model_path": "/kaggle/input/lmsys-go-deberta-model-outputs/model_output/",
         "output_path": "/kaggle/working/submission.csv",
     }
     tokenizer = AutoTokenizer.from_pretrained(
         inference_config["tokenizer_path"]
     )
-    model = AutoModelForSequenceClassification.from_pretrained(
+    model = CustomizedDetertaClassifier.from_pretrained(
         inference_config["model_path"]
+
     )
     model.to(device)
 
@@ -73,20 +74,23 @@ def go(for_test: bool):
     dataset.cleanup_cache_files()
     tokenization_args = {
         "tokenizer": tokenizer,
-        "max_length": model_config["max_length"],
         "prompt_field": data_config["prompt"],
         "resp_a_field": data_config["resp_a"],
         "resp_b_field": data_config["resp_b"],
+        "max_token_length": 574,
+        "max_prompt_token_length": 64,
+        "max_resp_a_token_length": 255,
+        "max_resp_b_token_length": 255,
         "target_field": data_config["added_target_field"],
     }
     dataset_id = np.array(dataset["id"]).reshape((len(dataset), -1))
     dataset = dataset.map(
-        function=tokenization,
+        function=tokenization_separate,
         batched=False,
         fn_kwargs=tokenization_args,
         remove_columns=dataset.column_names,
     )
-    data_collator = DataCollatorWithPadding(
+    data_collator = Collator(
         tokenizer,
         max_length=model_config["max_length"],
     )
@@ -106,5 +110,5 @@ def go(for_test: bool):
 
 
 if __name__ == "__main__":
-    # ! python /kaggle/working/go.py --for_test=True
+    # ! python /kaggle/working/inference_deberta.py --for_test=True
     go()
