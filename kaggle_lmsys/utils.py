@@ -38,6 +38,86 @@ def get_tokenization_length(
     return len(tokenized_outputs["input_ids"])
 
 
+@torch.no_grad()
+def get_deberta_hidden_states(
+    texts: List[str],
+    llm_model: object,
+    tokenizer: AutoTokenizer,
+    max_length: int,
+) -> torch.tensor:
+    """
+    IN: (num_total, )
+    OUT: (num_total, num_tokens (=max_length), embedding_size)
+
+    :param texts:
+    :param llm_model:
+    :param tokenizer:
+    :param max_length:
+    :return:
+    """
+
+    embedding_texts = []
+    for text in texts:
+        tokenized_text = tokenizer(
+            text,
+            max_length=max_length,
+            truncation=True,
+            padding="max_length",
+            return_tensors="pt",
+        )
+        hidden_states = llm_model(**tokenized_text).last_hidden_state
+        embedding_texts.append(hidden_states)
+
+    return torch.vstack(embedding_texts)
+
+
+def run_embedding_feature_engineering(
+    data: pd.DataFrame,
+    prompt_field: str,
+    max_prompt_token_length: int,
+    resp_a_field: str,
+    max_resp_a_token_length: int,
+    resp_b_field: str,
+    max_resp_b_token_length: int,
+    llm_model: object,
+    tokenizer: AutoTokenizer,
+) -> np.ndarray:
+    prompt_texts = data[prompt_field].tolist()
+    resp_a_texts = data[resp_a_field].tolist()
+    resp_b_texts = data[resp_b_field].tolist()
+
+    prompt_hidden_states = get_deberta_hidden_states(
+        prompt_texts,
+        llm_model,
+        tokenizer,
+        max_prompt_token_length,
+    )
+    resp_a_hidden_states = get_deberta_hidden_states(
+        resp_a_texts,
+        llm_model,
+        tokenizer,
+        max_resp_a_token_length,
+    )
+    resp_b_hidden_states = get_deberta_hidden_states(
+        resp_b_texts,
+        llm_model,
+        tokenizer,
+        max_resp_b_token_length,
+    )
+    agg_axis = 1
+    resp_diff = (
+        resp_a_hidden_states.mean(axis=agg_axis) - resp_b_hidden_states.mean(axis=agg_axis)
+    )
+    resp_diff = resp_diff.reshape(resp_diff.shape[0], 1, resp_diff.shape[1])
+
+    all_embeddings = (
+        prompt_hidden_states, resp_a_hidden_states, resp_b_hidden_states, resp_diff
+    )
+    all_embeddings = torch.concatenate(all_embeddings, axis=1)
+
+    return all_embeddings.reshape(len(all_embeddings), -1).numpy()
+
+
 def simple_tokenization(
     batch_text_records: List,
     tokenizer: AutoTokenizer,
