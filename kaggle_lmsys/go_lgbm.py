@@ -1,12 +1,15 @@
 import logging
 import sys
+import pickle
 from pathlib import Path
 
 import click
 import numpy as np
-import pandas as pd
 import torch
 from huggingface_hub import login as hf_login
+import lightgbm as lgb
+from sklearn.metrics import log_loss
+from sklearn.model_selection import train_test_split
 from transformers import AutoTokenizer
 from transformers import AutoModel
 
@@ -38,8 +41,8 @@ def go(for_test: bool) -> None:
     device = get_device()
 
     data_config = {
-        "train_data_path": "/home/lkang/Downloads/lmsys-chatbot-arena/train.csv",
-        "test_data_path": "/home/lkang/Downloads/lmsys-chatbot-arena/test.csv",
+        "train_data_path": "/kaggle/input/lmsys-chatbot-arena/train.csv",
+        "test_data_path": "/kaggle/input/lmsys-chatbot-arena/test.csv",
         "prompt": "prompt",
         "resp_a": "response_a",
         "resp_b": "response_b",
@@ -48,24 +51,28 @@ def go(for_test: bool) -> None:
         "resp_tie": "winner_tie",
         "added_target_field": "labels",
     }
-    model_config = {
+    llm_model_config = {
         "model_name": "microsoft/deberta-base",
-        "num_labels": 3,
-        "train_pct": 0.8,
-        "eval_pct": 0.2,
-        "cv": 4,
         "max_length": 256,
-        "learning_rate": 7.0e-06,
         "train_batch_size": 4,
-        "num_epoch": 1,
         "output_path": "model_output",
+    }
+    model_config = {
+        "train_pct": 0.8,
+        "eval_pct": 0.5,
+        "cv": 4,
+        "num_epoch": 1,
+        "output_path": "/kaggle/working/lgbm_model.pkl",
+        "learning_rate": 0.03,
+        "num_labels": 3,
+        "stopping_rounds": 50,
     }
 
     data_path = Path(data_config["train_data_path"])
     input_fields = [data_config["prompt"], data_config["resp_a"], data_config["resp_b"]]
     data = clean_data(data_path, input_fields)
     if for_test:
-        data = data.iloc[:10, :]
+        data = data.iloc[:100, :]
 
     target_fields = [
         data_config["resp_a_win"],
@@ -75,8 +82,9 @@ def go(for_test: bool) -> None:
     add_target_field = data_config["added_target_field"]
     data = add_target(data, *target_fields, add_target_field)
 
-    tokenizer = AutoTokenizer.from_pretrained(model_config["model_name"], token=hf_token)
-    llm_model = AutoModel.from_pretrained(model_config["model_name"], token=hf_token)
+    tokenizer = AutoTokenizer.from_pretrained(llm_model_config["model_name"], token=hf_token)
+    llm_model = AutoModel.from_pretrained(llm_model_config["model_name"], token=hf_token)
+    llm_model.to(device)
     data_embeddings = run_embedding_feature_engineering(
         data=data,
         tokenizer=tokenizer,
@@ -87,7 +95,42 @@ def go(for_test: bool) -> None:
         max_resp_a_token_length=255,
         max_resp_b_token_length=255,
         llm_model=llm_model,
+        device=device,
     )
+
+    # Split dataset
+    x_train, x_test, y_train, y_test = train_test_split(
+        data_embeddings,
+        data[add_target_field].values,
+        test_size=model_config["eval_pct"],
+        random_state=SEED,
+    )
+    # Create the model
+    model_params = {
+        'n_estimators': 1000,
+        'max_depth': 4,
+        'subsample': 0.8,
+        'colsample_bytree': 0.8,
+        'objective': 'multiclass',
+        'num_class': model_config["num_labels"],
+        'metric': 'multi_logloss',
+        'random_state': SEED,
+        'learning_rate': model_config["learning_rate"],
+    }
+    model = lgb.LGBMClassifier(**model_params)
+    model.fit(
+        x_train,
+        y_train,
+        eval_set=[(x_test, y_test)],
+        eval_metric='multi_logloss',
+        callbacks=[lgb.early_stopping(stopping_rounds=model_config["stopping_rounds"])]
+    )
+    pickle.dump(model, open(model_config['output_path'], "wb"))
+    tokenizer.save_pretrained(llm_model_config["output_path"])
+    llm_model.save_pretrained(llm_model_config["output_path"])
+    y_pred_proba = model.predict_proba(x_test)
+    logloss = log_loss(y_test, y_pred_proba)
+    logger.info(f"\nEvaluation set log Loss: {logloss}")
 
 
 if __name__ == "__main__":

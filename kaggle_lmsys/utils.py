@@ -1,13 +1,34 @@
+import logging
+import time
+import sys
 from pathlib import Path
 from typing import Dict
 from typing import List
 from typing import Optional
+from typing import Callable
 
 import numpy as np
 import pandas as pd
 import torch
 from transformers import AutoTokenizer
 from transformers import DataCollatorWithPadding
+
+
+logger = logging.getLogger(__name__)
+logger.addHandler(logging.StreamHandler(sys.stdout))
+logger.setLevel(logging.DEBUG)
+
+
+def time_it(func: Callable) -> None:
+    def _time_it(*args, **kwargs):
+        start_perf_conter = time.perf_counter()
+        outputs = func(*args, **kwargs)
+        end_perf_conter = time.perf_counter()
+        msg: str = f">>>>>>>>>>>>>> time it - Func:{func} Time:{end_perf_conter - start_perf_conter}"
+        logger.info(msg)
+        return outputs
+
+    return _time_it
 
 
 def get_device() -> torch.device:
@@ -38,12 +59,14 @@ def get_tokenization_length(
     return len(tokenized_outputs["input_ids"])
 
 
+@time_it
 @torch.no_grad()
 def get_deberta_hidden_states(
     texts: List[str],
     llm_model: object,
     tokenizer: AutoTokenizer,
     max_length: int,
+    device: torch.device,
 ) -> torch.tensor:
     """
     IN: (num_total, )
@@ -65,12 +88,14 @@ def get_deberta_hidden_states(
             padding="max_length",
             return_tensors="pt",
         )
-        hidden_states = llm_model(**tokenized_text).last_hidden_state
-        embedding_texts.append(hidden_states)
+        tokenized_text.to(device)
+        preds = llm_model(**tokenized_text)
+        embedding_texts.append(preds.last_hidden_state)
 
     return torch.vstack(embedding_texts)
 
 
+@time_it
 def run_embedding_feature_engineering(
     data: pd.DataFrame,
     prompt_field: str,
@@ -81,6 +106,7 @@ def run_embedding_feature_engineering(
     max_resp_b_token_length: int,
     llm_model: object,
     tokenizer: AutoTokenizer,
+    device: torch.device,
 ) -> np.ndarray:
     prompt_texts = data[prompt_field].tolist()
     resp_a_texts = data[resp_a_field].tolist()
@@ -91,18 +117,21 @@ def run_embedding_feature_engineering(
         llm_model,
         tokenizer,
         max_prompt_token_length,
+        device,
     )
     resp_a_hidden_states = get_deberta_hidden_states(
         resp_a_texts,
         llm_model,
         tokenizer,
         max_resp_a_token_length,
+        device,
     )
     resp_b_hidden_states = get_deberta_hidden_states(
         resp_b_texts,
         llm_model,
         tokenizer,
         max_resp_b_token_length,
+        device,
     )
     agg_axis = 1
     resp_diff = (
@@ -115,7 +144,7 @@ def run_embedding_feature_engineering(
     )
     all_embeddings = torch.concatenate(all_embeddings, axis=1)
 
-    return all_embeddings.reshape(len(all_embeddings), -1).numpy()
+    return all_embeddings.reshape(len(all_embeddings), -1).detach().cpu().numpy()
 
 
 def simple_tokenization(
