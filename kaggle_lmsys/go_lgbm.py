@@ -8,6 +8,7 @@ import numpy as np
 import torch
 from huggingface_hub import login as hf_login
 import lightgbm as lgb
+from scipy.sparse import csr_matrix
 from sklearn.metrics import log_loss
 from sklearn.model_selection import train_test_split
 from transformers import AutoTokenizer
@@ -97,6 +98,7 @@ def go(for_test: bool) -> None:
         llm_model=llm_model,
         device=device,
     )
+    data_embeddings = csr_matrix(data_embeddings)
 
     # Split dataset
     x_train, x_test, y_train, y_test = train_test_split(
