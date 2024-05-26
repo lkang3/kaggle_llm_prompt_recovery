@@ -38,7 +38,7 @@ def go(for_test: bool) -> None:
         "tokenizer_path": "/kaggle/input/lmsys-go-lgbm-model-outputs/model_output/",
         "llm_model_path": "/kaggle/input/lmsys-go-lgbm-model-outputs/model_output/",
         "output_path": "/kaggle/working/submission.csv",
-        "model_path": "/kaggle/input/lmsys-go-lgbm-model-outputs/model_output/model.pkl",
+        "model_path": "/kaggle/input/lmsys-go-lgbm-model-outputs/lgbm_model.pkl",
     }
     data_config = {
         "prompt": "prompt",
@@ -70,17 +70,16 @@ def go(for_test: bool) -> None:
         max_resp_b_token_length=255,
         llm_model=llm_model,
         device=device,
+        batch_size=10,
     )
     model = pickle.load(open(inference_config["model_path"], "rb"))
-
     preds = model.predict_proba(data_embeddings)
-    dataset_id = np.array(data["id"]).reshape((len(data), -1))
     outputs = pd.DataFrame(
         {
-            "id": dataset_id,
+            "id": data["id"],
             "winner_model_a": preds[:, 0],
             "winner_model_b": preds[:, 1],
-            "winner_tie": preds[:, 2]
+            "winner_tie": preds[:, 2],
         }
     )
     outputs.to_csv(inference_config["output_path"], index=False)

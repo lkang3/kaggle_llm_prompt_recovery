@@ -11,6 +11,7 @@ from typing import Callable
 import numpy as np
 import pandas as pd
 import torch
+from torch.nn import CosineSimilarity
 from sklearn.metrics.pairwise import cosine_similarity
 from transformers import AutoTokenizer
 from transformers import DataCollatorWithPadding
@@ -181,13 +182,23 @@ def run_embedding_feature_engineering(
         device,
         agg_operators,
     )
+
     resp_diff_embeddings = resp_a_embeddings["mean"] - resp_b_embeddings["mean"]
+    cs = CosineSimilarity(dim=1)
+    resp_a_and_prompt_cosine_similarity = cs(
+        resp_a_embeddings["mean"], prompt_embeddings["mean"]
+    ).unsqueeze(-1)
+    resp_b_and_prompt_cosine_similarity = cs(
+        resp_b_embeddings["mean"], prompt_embeddings["mean"]
+    ).unsqueeze(-1)
 
     all_embeddings = (
         prompt_embeddings["mean"],
         resp_a_embeddings["mean"],
         resp_b_embeddings["mean"],
         resp_diff_embeddings,
+        resp_a_and_prompt_cosine_similarity,
+        resp_b_and_prompt_cosine_similarity,
     )
     all_embeddings = torch.concatenate(all_embeddings, axis=1)
 
@@ -332,8 +343,6 @@ def tokenization_separate(
     if target_value is not None:
         outputs[target_field] = target_value
     return outputs
-
-from sklearn.preprocessing import Normalizer
 
 
 class Collator(DataCollatorWithPadding):

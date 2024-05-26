@@ -7,10 +7,6 @@ import click
 import numpy as np
 import torch
 from huggingface_hub import login as hf_login
-import lightgbm as lgb
-from scipy.sparse import csr_matrix
-from sklearn.metrics import log_loss
-from sklearn.model_selection import train_test_split
 from transformers import AutoTokenizer
 from transformers import AutoModel
 
@@ -18,6 +14,7 @@ from train_utils import add_target
 from utils import clean_data
 from utils import get_device
 from utils import run_embedding_feature_engineering
+from predictive_ai_models import LGBMBasedClassifier
 
 
 logger = logging.getLogger(__name__)
@@ -97,16 +94,9 @@ def go(for_test: bool) -> None:
         max_resp_b_token_length=255,
         llm_model=llm_model,
         device=device,
+        batch_size=10,
     )
-    data_embeddings = csr_matrix(data_embeddings)
 
-    # Split dataset
-    x_train, x_test, y_train, y_test = train_test_split(
-        data_embeddings,
-        data[add_target_field].values,
-        test_size=model_config["eval_pct"],
-        random_state=SEED,
-    )
     # Create the model
     model_params = {
         'n_estimators': 1000,
@@ -119,20 +109,15 @@ def go(for_test: bool) -> None:
         'random_state': SEED,
         'learning_rate': model_config["learning_rate"],
     }
-    model = lgb.LGBMClassifier(**model_params)
-    model.fit(
-        x_train,
-        y_train,
-        eval_set=[(x_test, y_test)],
-        eval_metric='multi_logloss',
-        callbacks=[lgb.early_stopping(stopping_rounds=model_config["stopping_rounds"])]
+    model = LGBMBasedClassifier(
+        estimator_params=model_params,
+        eval_pct=model_config["eval_pct"],
+        seed=SEED,
     )
+    model.fit(data_embeddings, data[add_target_field].values)
     pickle.dump(model, open(model_config['output_path'], "wb"))
     tokenizer.save_pretrained(llm_model_config["output_path"])
     llm_model.save_pretrained(llm_model_config["output_path"])
-    y_pred_proba = model.predict_proba(x_test)
-    logloss = log_loss(y_test, y_pred_proba)
-    logger.info(f"\nEvaluation set log Loss: {logloss}")
 
 
 if __name__ == "__main__":

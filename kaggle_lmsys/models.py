@@ -6,7 +6,6 @@ import torch
 from torch import nn
 from transformers.activations import ACT2FN
 from transformers import AutoConfig
-from transformers import AutoModel
 from transformers import AutoModelForSequenceClassification
 from transformers import DebertaConfig
 from transformers import DebertaForSequenceClassification
