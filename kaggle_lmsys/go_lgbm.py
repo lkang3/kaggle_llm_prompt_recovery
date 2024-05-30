@@ -1,3 +1,4 @@
+import copy
 import logging
 import sys
 import pickle
@@ -11,11 +12,13 @@ from transformers import AutoTokenizer
 from transformers import AutoModel
 
 from train_utils import add_target
-from utils import clean_data
-from utils import get_device
-from utils import run_embedding_feature_engineering
-from predictive_ai_models import LGBMBasedClassifier
-
+from kaggle_lmsys.utils import clean_data
+from kaggle_lmsys.utils import get_device
+from kaggle_lmsys.utils import run_embedding_feature_engineering
+from kaggle_lmsys.models.lgbm_classifier import LGBMBasedClassifier
+from kaggle_lmsys.models.enum import DataType
+from kaggle_lmsys.models.entities import ModelData
+from kaggle_lmsys.models.model_type_classifier import predict_model_types
 
 logger = logging.getLogger(__name__)
 logger.addHandler(logging.StreamHandler(sys.stdout))
@@ -64,6 +67,8 @@ def go(for_test: bool) -> None:
         "learning_rate": 0.03,
         "num_labels": 3,
         "stopping_rounds": 50,
+        "model_type_tokenizer_path": "/kaggle/input/lmsys-go-deberta-model-type-model-outputs/model_type_classifier_output",
+        "model_type_model_path": "/kaggle/input/lmsys-go-deberta-model-type-model-outputs/model_type_classifier_output",
     }
 
     data_path = Path(data_config["train_data_path"])
@@ -71,7 +76,6 @@ def go(for_test: bool) -> None:
     data = clean_data(data_path, input_fields)
     if for_test:
         data = data.iloc[:100, :]
-
     target_fields = [
         data_config["resp_a_win"],
         data_config["resp_b_win"],
@@ -79,6 +83,23 @@ def go(for_test: bool) -> None:
     ]
     add_target_field = data_config["added_target_field"]
     data = add_target(data, *target_fields, add_target_field)
+
+    # add predicted model types
+    pred_model_types_args = {
+        "tokenizer_path": model_config["model_type_tokenizer_path"],
+        "model_path": model_config["model_type_model_path"],
+        "data": data,
+        "prompt_field_name": data_config["prompt"],
+        "tokenization_max_length": 512,
+    }
+    model_types_args = copy.deepcopy(pred_model_types_args)
+    model_types_args.update({"resp_field_name": data_config["resp_a"]})
+    model_a_types = predict_model_types(**model_types_args)
+    model_types_args = copy.deepcopy(pred_model_types_args)
+    model_types_args.update({"resp_field_name": data_config["resp_b"]})
+    model_b_types = predict_model_types(**model_types_args)
+    data["model_a_type"] = model_a_types
+    data["model_b_type"] = model_b_types
 
     tokenizer = AutoTokenizer.from_pretrained(llm_model_config["model_name"], token=hf_token)
     llm_model = AutoModel.from_pretrained(llm_model_config["model_name"], token=hf_token)
@@ -114,7 +135,18 @@ def go(for_test: bool) -> None:
         eval_pct=model_config["eval_pct"],
         seed=SEED,
     )
-    model.fit(data_embeddings, data[add_target_field].values)
+    model_data_ndarray = np.concatenate(
+        (data_embeddings, data["model_a_type"].values.reshape(-1, 1), data["model_b_type"].values.reshape(-1, 1)),
+        axis=1,
+    )
+    model_data_types = [DataType.NUM] * data_embeddings.shape[1]
+    model_data_types.extend([DataType.CAT] * 2)
+    model_data = ModelData(
+        data_types=np.array(model_data_types),
+        x=model_data_ndarray,
+        y=data[add_target_field].values,
+    )
+    model.fit(model_data)
     pickle.dump(model, open(model_config['output_path'], "wb"))
     tokenizer.save_pretrained(llm_model_config["output_path"])
     llm_model.save_pretrained(llm_model_config["output_path"])

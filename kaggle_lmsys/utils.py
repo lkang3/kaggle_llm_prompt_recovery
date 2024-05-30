@@ -220,7 +220,31 @@ def simple_tokenization(
     ).to(device)
 
 
-def tokenization(
+def tokenization_prompt_one_resp(
+    record: Dict,
+    tokenizer: AutoTokenizer,
+    max_length: int,
+    prompt_field: str,
+    resp_field: str,
+    target_field: Optional[str] = None,
+) -> Dict:
+    prompt: str = record[prompt_field]
+    resp: str = record[resp_field]
+    target_value = record[target_field] if target_field in record else None
+
+    processed_record = tokenizer(
+        prompt,
+        resp,
+        max_length=max_length,
+        truncation=True,
+    )
+    if target_value is not None:
+        processed_record[target_field] = target_value
+
+    return processed_record
+
+
+def tokenization_prompt_two_resp(
     record: Dict,
     tokenizer: AutoTokenizer,
     max_length: int,

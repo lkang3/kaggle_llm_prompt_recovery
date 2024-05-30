@@ -4,21 +4,20 @@ from pathlib import Path
 
 import click
 import numpy as np
-import pandas as pd
 from peft.peft_model import PeftModel
 import torch
 from datasets import Dataset
 from huggingface_hub import login as hf_login
-from train_utils import add_target
+from kaggle_lmsys.train_utils import create_model_type_train_data
+from transformers import AutoModelForSequenceClassification
 from transformers import AutoTokenizer
 from transformers import GemmaTokenizerFast
 from transformers import TrainingArguments
 from transformers import Trainer
-from utils import clean_data
-from utils import Collator
-from utils import tokenization_separate
-from utils import get_device
-from models.deberta_classifier import CustomizedDetertaClassifier
+from kaggle_lmsys.utils import clean_data
+from kaggle_lmsys.utils import Collator
+from kaggle_lmsys.utils import tokenization_prompt_one_resp
+from kaggle_lmsys.utils import get_device
 
 logger = logging.getLogger(__name__)
 logger.addHandler(logging.StreamHandler(sys.stdout))
@@ -47,14 +46,9 @@ def go(for_test: bool) -> None:
         "prompt": "prompt",
         "resp_a": "response_a",
         "resp_b": "response_b",
-        "resp_a_win": "winner_model_a",
-        "resp_b_win": "winner_model_b",
-        "resp_tie": "winner_tie",
-        "added_target_field": "labels",
     }
     model_config = {
         "model_name": "microsoft/deberta-base",
-        "num_labels": 3,
         "train_pct": 0.8,
         "eval_pct": 0.2,
         "cv": 4,
@@ -62,7 +56,7 @@ def go(for_test: bool) -> None:
         "learning_rate": 7.0e-06,
         "train_batch_size": 4,
         "num_epoch": 1,
-        "output_path": "model_output",
+        "output_path": "model_type_classifier_output",
     }
 
     data_path = Path(data_config["train_data_path"])
@@ -70,14 +64,17 @@ def go(for_test: bool) -> None:
     data = clean_data(data_path, input_fields)
     if for_test:
         data = data.iloc[:100, :]
-
-    target_fields = [
-        data_config["resp_a_win"],
-        data_config["resp_b_win"],
-        data_config["resp_tie"],
-    ]
-    add_target_field = data_config["added_target_field"]
-    data = add_target(data, *target_fields, add_target_field)
+    train_data_config = {
+        "prompt_field_name": data_config["prompt"],
+        "response_field_name": "response",
+        "model_type_field_name": "labels",
+    }
+    data, num_of_targets = create_model_type_train_data(
+        data,
+        output_prompt_field_name=train_data_config["prompt_field_name"],
+        output_response_field_name=train_data_config["response_field_name"],
+        output_model_type_field_name=train_data_config["model_type_field_name"],
+    )
     dataset = Dataset.from_pandas(data)
     dataset.cleanup_cache_files()
     tokenizer: GemmaTokenizerFast = AutoTokenizer.from_pretrained(
@@ -86,17 +83,13 @@ def go(for_test: bool) -> None:
     )
     tokenization_args = {
         "tokenizer": tokenizer,
+        "max_length": 512,
         "prompt_field": data_config["prompt"],
-        "resp_a_field": data_config["resp_a"],
-        "resp_b_field": data_config["resp_b"],
-        "max_token_length": 574,
-        "max_prompt_token_length": 64,
-        "max_resp_a_token_length": 255,
-        "max_resp_b_token_length": 255,
-        "target_field": add_target_field,
+        "resp_field": train_data_config["response_field_name"],
+        "target_field": train_data_config["model_type_field_name"],
     }
     dataset = dataset.map(
-        function=tokenization_separate,
+        function=tokenization_prompt_one_resp,
         batched=False,
         fn_kwargs=tokenization_args,
         remove_columns=dataset.column_names,
@@ -110,9 +103,9 @@ def go(for_test: bool) -> None:
     dataset_eval: Dataset = dataset["test"]
 
     # modeling setup
-    model = CustomizedDetertaClassifier.from_pretrained(
+    model = AutoModelForSequenceClassification.from_pretrained(
         "microsoft/deberta-base",
-        num_labels=model_config["num_labels"],
+        num_labels=num_of_targets,
     )
     torch.cuda.empty_cache()
     data_collator = Collator(

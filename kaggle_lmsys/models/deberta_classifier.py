@@ -1,16 +1,13 @@
-from typing import Optional
-from typing import Union
-from typing import Tuple
+from typing import Optional, Union, Tuple
 
 import torch
 from torch import nn
+from torch.nn import CrossEntropyLoss, MSELoss, BCEWithLogitsLoss
+from transformers import DebertaConfig, DebertaForSequenceClassification
 from transformers.activations import ACT2FN
+from transformers.modeling_outputs import SequenceClassifierOutput
 from transformers import AutoConfig
 from transformers import AutoModelForSequenceClassification
-from transformers import DebertaConfig
-from transformers import DebertaForSequenceClassification
-from transformers.modeling_outputs import SequenceClassifierOutput
-from torch.nn import BCEWithLogitsLoss, CrossEntropyLoss, MSELoss
 
 
 def load_class(module_name: str, class_name: str) -> None:

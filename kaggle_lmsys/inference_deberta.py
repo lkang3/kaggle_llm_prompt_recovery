@@ -11,7 +11,7 @@ from utils import clean_data
 from utils import tokenization_separate
 from utils import get_device
 from utils import Collator
-from models import CustomizedDetertaClassifier
+from models.deberta_classifier import CustomizedDetertaClassifier
 
 
 SEED = 123
