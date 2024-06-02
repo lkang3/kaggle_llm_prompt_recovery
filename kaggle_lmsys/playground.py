@@ -1,12 +1,19 @@
 import pytest
 import torch
 import numpy as np
-from torch.nn import Parameter
+import pandas as pd
+from scipy.stats import chi2_contingency
+from scipy.stats import chi2
 from transformers import AutoTokenizer
-from transformers import AutoModel
 from transformers import AutoModelForSequenceClassification
 
-from kaggle_lmsys.models import get_diff_of_two_response
+from kaggle_lmsys.models.deberta_classifier import get_diff_of_two_response
+
+
+@pytest.fixture
+def data() -> pd.DataFrame:
+    data = pd.read_csv("/home/lkang/Downloads/lmsys-chatbot-arena/train.csv")
+    return data
 
 
 def test_get_diff_of_two_response():
@@ -37,3 +44,28 @@ def test_last_hidden_state():
         outputs = model(**text_tokens)
         lhs = outputs.last_hidden_state
         assert lhs.shape == (3, 7, 768)
+
+
+def test_correlation_between_target_and_model_type_association(data: pd.DataFrame) -> None:
+    p_value = 0.95
+    combined_model_types = data.apply(lambda row: f"{row['model_a']}-vs-{row['model_b']}", axis=1)
+    winner_model_a = data["winner_model_a"].values
+    winner_model_b = data["winner_model_b"].values
+    winner_tie = data["winner_tie"].values
+    contingency_table = pd.crosstab(
+        combined_model_types, [winner_model_a, winner_model_b, winner_tie]
+    )
+    stat, p, dof, expected = chi2_contingency(contingency_table)
+    critical = chi2.ppf(p_value, dof)
+    print(f"stat: {stat}, critical: {critical}")
+    if abs(stat) >= critical:
+        print("Dependent (reject H0)")
+    else:
+        print("Independent (fail to reject H0)")
+    alpha = 1.0 - p_value
+    print(f"p_value: {p}, alpha: {alpha}")
+    print("significance=%.3f, p=%.3f" % (alpha, p))
+    if p <= alpha:
+        print("Dependent (reject H0)")
+    else:
+        print("Independent (fail to reject H0)")
