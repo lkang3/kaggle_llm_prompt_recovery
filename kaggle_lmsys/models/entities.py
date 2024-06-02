@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from dataclasses import field
 
 import numpy as np
+import pandas as pd
 
 from kaggle_lmsys.models.enum import DataType
 
