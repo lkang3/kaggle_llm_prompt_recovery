@@ -1,3 +1,4 @@
+seed: 123
 data:
   train_data_path: "/kaggle/input/lmsys-chatbot-arena/train.csv"
   test_data_path: "/kaggle/input/lmsys-chatbot-arena/test.csv"
@@ -8,6 +9,30 @@ data:
   resp_b_win: "winner_model_b"
   resp_tie: "winner_tie"
   added_target_field: "labels"
+
+pipeline_basic_embedding_w2v:
+  model_name: "glove-twitter-50"
+  model_path: "/kaggle/working/w2v_models/w2v_glove-twitter-50"
+  embedding_aggregator: "mean"
+  pipeline_output_path: "/kaggle/working/basic_embedding_w2v_pipeline.pkl"
+
+pipeline_basic_embedding_deberta:
+  tokenizer_name: "microsoft/deberta-base"
+  model_name: "microsoft/deberta-base"
+  tokenizer_output_path: "/kaggle/working/model_output/"
+  model_output_path: "/kaggle/working/model_output/"
+  pipeline_output_path: "/kaggle/working/basic_embedding_deterta_pipeline.pkl"
+  max_token_length: 256
+
+pipeline_basic_embedding_tfidf:
+  tfidf:
+    params:
+      ngram_range: [1, 5]
+      strip_accents: "unicode"
+      min_df: 10
+      max_features: 300
+  data: ["prompt", "response_a", "response_b"]
+  pipeline_output_path: "/kaggle/working/basic_embedding_tfidf_pipeline.pkl"
 
 pipeline_embedding_w2v:
   model_name: "glove-twitter-50"
@@ -35,6 +60,8 @@ classifier_lgbm_pipeline:
         metric: "multi_logloss"
         random_state: 123
         learning_rate: 0.003
+        class_weight: "balanced"
+        verbose: -1
     eval_pct: 0.2
     early_stopping: 100
   seed: 123

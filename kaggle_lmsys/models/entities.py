@@ -12,6 +12,7 @@ class ModelData:
     data_types: np.array
     x: np.ndarray
     y: np.ndarray = field(default=None)
+    col_names: np.array = field(default=None)
 
     def __post_init__(self) -> None:
         if self.y is not None and len(self.x) != len(self.y):

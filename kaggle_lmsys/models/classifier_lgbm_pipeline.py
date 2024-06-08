@@ -6,10 +6,12 @@ import numpy as np
 from scipy.sparse import csr_matrix
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import RobustScaler
+from sklearn.preprocessing import StandardScaler
 from sklearn.preprocessing import OneHotEncoder
 
 from kaggle_lmsys.models.enum import DataType
 from kaggle_lmsys.models.entities import ModelData
+from kaggle_lmsys.utils import time_it
 
 
 class LGBMClassifierPipeline:
@@ -57,7 +59,8 @@ class LGBMClassifierPipeline:
         with open(self.config['output_path'], "rb") as output_file:
             return pickle.load(self, output_file)
 
-    def fit(self, model_data: ModelData) -> None:
+    @time_it
+    def fit(self, model_data: ModelData) -> "LGBMClassifierPipeline":
         x = self._preprocess(model_data)
         x = csr_matrix(x)
         x_train, x_test, y_train, y_test = train_test_split(
@@ -72,10 +75,16 @@ class LGBMClassifierPipeline:
             eval_set=[(x_test, y_test)],
             eval_metric="multi_logloss",
             callbacks=[
-                lgbm.early_stopping(stopping_rounds=self.config["lgbm"]["early_stopping"])
+                lgbm.early_stopping(
+                    stopping_rounds=self.config["lgbm"]["early_stopping"],
+                    verbose=False,
+                )
             ]
         )
+        self.save()
+        return self
 
+    @time_it
     def predict_proba(self, model_data: ModelData) -> np.ndarray:
         x = self._preprocess_inference(model_data)
         return self.estimator.predict_proba(x)

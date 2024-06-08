@@ -14,8 +14,9 @@ from train_utils import add_target
 from kaggle_lmsys.utils import clean_data
 from kaggle_lmsys.models.enum import DataType
 from kaggle_lmsys.models.entities import ModelData
-from kaggle_lmsys.models.embedding_flow_deterta import DetertaEmbeddingFlow
-from kaggle_lmsys.models.embedding_flow_word2vec import W2VEmbeddingFlow
+from kaggle_lmsys.models.embedding_flow_deterta import DetertaEmbeddingLMSYSFlow
+from kaggle_lmsys.models.embedding_flow_tfidf import TFIDFLMSYSFlow
+from kaggle_lmsys.models.embedding_flow_word2vec import W2VEmbeddingLMSYSFlow
 from kaggle_lmsys.models.classifier_lgbm_pipeline import LGBMClassifierPipeline
 
 logger = logging.getLogger(__name__)
@@ -31,16 +32,20 @@ torch_gen.manual_seed(0)
 numpy_gen = np.random.Generator(np.random.PCG64(seed=SEED))
 
 
-hf_token: str = "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"
-
-
 @click.command()
+@click.option("--hf_token", type=str, required=False)
 @click.option("--for_test", type=bool, default=False, required=True)
+@click.option("--for_test_pct", type=float, default=1.0, required=True)
 @click.option("--config_path", type=str, required=True)
 def go(
+    hf_token: str,
     for_test: bool,
+    for_test_pct: float,
     config_path: str,
 ) -> None:
+    # login
+    hf_login(hf_token)
+
     # config stuff
     with open(Path(config_path), "r", encoding="utf-8") as config_file:
         config = yaml.safe_load(config_file)
@@ -65,6 +70,7 @@ def go(
             },
         },
     )
+    pipeline_basic_embedding_tfidf = config["pipeline_basic_embedding_tfidf"]
     classifier_lgbm_pipeline_config = config["classifier_lgbm_pipeline"]
 
     # data loading
@@ -72,7 +78,8 @@ def go(
     input_fields = [data_config["prompt"], data_config["resp_a"], data_config["resp_b"]]
     data = clean_data(input_data_path, input_fields)
     if for_test:
-        data = data.iloc[:100, :]
+        num_samples = int(for_test_pct * len(data))
+        data = data.iloc[:num_samples, :]
     target_fields = [
         data_config["resp_a_win"],
         data_config["resp_b_win"],
@@ -84,13 +91,18 @@ def go(
     model_inputs: List[np.ndarray] = []
 
     # w2v embeddings fit/inference
-    w2v_embedding_flow = W2VEmbeddingFlow(pipeline_embedding_w2v_config)
+    w2v_embedding_flow = W2VEmbeddingLMSYSFlow(pipeline_embedding_w2v_config)
     w2v_embeddings = w2v_embedding_flow.fit_and_inference(data)
     model_inputs.append(w2v_embeddings)
 
+    # tfidf embeddings fit/inference
+    tfidf_embedding_flow = TFIDFLMSYSFlow(pipeline_basic_embedding_tfidf)
+    tfidf_embeddings = tfidf_embedding_flow.fit_and_inference(data)
+    model_inputs.append(tfidf_embeddings)
+
     # deberta tokenizer embeddings fit/inference
-    deterta_embedding_flow = DetertaEmbeddingFlow(pipeline_embedding_deterba_config)
-    deberta_embeddings = deterta_embedding_flow.fit_and_inference(data)
+    deberta_embedding_flow = DetertaEmbeddingLMSYSFlow(pipeline_embedding_deterba_config)
+    deberta_embeddings = deberta_embedding_flow.fit_and_inference(data)
     model_inputs.append(deberta_embeddings)
 
     # classifier fit
@@ -107,6 +119,5 @@ def go(
 
 
 if __name__ == "__main__":
-    # ! python /kaggle/working/go_lgbm_v2.py --for_test=False --config_path=
-    hf_login(hf_token)
+    # ! python /kaggle/working/go_lgbm_v2.py --for_test=False --for_test_pct=1.0 --config_path=
     go()

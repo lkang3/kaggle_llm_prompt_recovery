@@ -13,8 +13,9 @@ import torch
 from kaggle_lmsys.utils import clean_data
 from kaggle_lmsys.models.enum import DataType
 from kaggle_lmsys.models.entities import ModelData
-from kaggle_lmsys.models.embedding_flow_deterta import DetertaEmbeddingFlow
-from kaggle_lmsys.models.embedding_flow_word2vec import W2VEmbeddingFlow
+from kaggle_lmsys.models.embedding_flow_deterta import DetertaEmbeddingLMSYSFlow
+from kaggle_lmsys.models.embedding_flow_word2vec import W2VEmbeddingLMSYSFlow
+from kaggle_lmsys.models.embedding_flow_tfidf import TFIDFLMSYSFlow
 
 logger = logging.getLogger(__name__)
 logger.addHandler(logging.StreamHandler(sys.stdout))
@@ -63,6 +64,7 @@ def go(
             },
         },
     )
+    pipeline_basic_embedding_tfidf = config["pipeline_basic_embedding_tfidf"]
     classifier_lgbm_pipeline_config = config["classifier_lgbm_pipeline"]
 
     # data loading
@@ -74,13 +76,20 @@ def go(
 
     model_inputs: List[np.ndarray] = []
 
-    # w2v embeddings fit/inference
-    w2v_embedding_flow = W2VEmbeddingFlow(pipeline_embedding_w2v_config)
+    # w2v embeddings inference
+    w2v_embedding_flow = W2VEmbeddingLMSYSFlow(pipeline_embedding_w2v_config)
     w2v_embeddings = w2v_embedding_flow.inference(data)
     model_inputs.append(w2v_embeddings)
 
-    # deberta tokenizer embeddings fit/inference
-    deterta_embedding_flow = DetertaEmbeddingFlow(pipeline_embedding_deterba_config)
+    # tfidf embeddings inference
+    tfidf_embedding_flow: TFIDFLMSYSFlow = pickle.load(
+        open(pipeline_basic_embedding_tfidf["pipeline_output_path"], "rb")
+    )
+    tfidf_embeddings = tfidf_embedding_flow.inference(data)
+    model_inputs.append(tfidf_embeddings)
+
+    # deberta tokenizer embeddings inference
+    deterta_embedding_flow = DetertaEmbeddingLMSYSFlow(pipeline_embedding_deterba_config)
     deberta_embeddings = deterta_embedding_flow.inference(data)
     model_inputs.append(deberta_embeddings)
 

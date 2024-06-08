@@ -1,3 +1,4 @@
+import pickle
 from collections import defaultdict
 from typing import Dict
 from typing import List
@@ -10,6 +11,7 @@ from torch.nn import CosineSimilarity
 from transformers import AutoModel
 from transformers import AutoTokenizer
 
+from kaggle_lmsys.models.entities import ModelData
 from kaggle_lmsys.utils import get_device
 from kaggle_lmsys.utils import time_it
 
@@ -155,7 +157,97 @@ def run_embedding_feature_engineering(
     return all_embeddings.detach().cpu().numpy()
 
 
-class DetertaEmbeddingFlow:
+@time_it
+def get_embeddings(
+    data: pd.DataFrame,
+    max_token_lengths: List[int],
+    llm_model: object,
+    tokenizer: AutoTokenizer,
+    device: torch.device,
+    batch_size: int = 10,
+) -> np.ndarray:
+    agg_operators = ["mean"]
+
+    all_embeddings = []
+    for col_name, max_token_length in zip(data.columns, max_token_lengths):
+        embeddings = extract_deterta_embeddings(
+            batch_size,
+            data[col_name].tolist(),
+            llm_model,
+            tokenizer,
+            max_token_length,
+            device,
+            agg_operators,
+        )
+        all_embeddings.append(embeddings["mean"])
+
+    all_embeddings = torch.concatenate(all_embeddings, axis=1)
+    return all_embeddings.detach().cpu().numpy()
+
+
+class DetertaEmbeddingBasicFlow:
+    def __init__(self, config: Dict) -> None:
+        self._config = config
+        self.device = get_device()
+        self.embedding_aggregators = {
+            "max": np.nanmax,
+            "min": np.nanmin,
+            "mean": np.nanmean,
+        }
+
+    @property
+    def config(self) -> Dict:
+        return self._config
+
+    def _setup_tokenizer(self) -> object:
+        return AutoTokenizer.from_pretrained(self.config["tokenizer_name"])
+
+    def _setup_model(self) -> object:
+        llm_model = AutoModel.from_pretrained(self.config["model_name"])
+        llm_model.to(self.device)
+        return llm_model
+
+    def _save(self, tokenizer: object, model: object) -> None:
+        tokenizer.save_pretrained(self.config["tokenizer_output_path"])
+        model.save_pretrained(self.config["model_output_path"])
+        with open(self.config["pipeline_output_path"], "wb") as output_file:
+            pickle.dump(self, output_file)
+
+    def _load_tokenizer(self) -> object:
+        return AutoTokenizer.from_pretrained(self.config["tokenizer_output_path"])
+
+    def _load_model(self) -> object:
+        model = AutoModel.from_pretrained(self.config["model_output_path"])
+        model.to(self.device)
+        return model
+
+    @time_it
+    def fit(self, data: ModelData) -> "DetertaEmbeddingLMSYSFlow":
+        tokenizer = self._setup_tokenizer()
+        model = self._setup_model()
+        self._save(tokenizer, model)
+        return self
+
+    def fit_and_inference(self, data: ModelData) -> np.ndarray:
+        self.fit(data)
+        return self.inference(data)
+
+    @time_it
+    def inference(self, data: ModelData) -> np.ndarray:
+        tokenizer = self._load_tokenizer()
+        model = self._load_model()
+
+        data = pd.DataFrame(data=data.x, columns=data.col_names)
+        return get_embeddings(
+            data=data,
+            max_token_lengths=[self.config["max_token_length"]] * data.shape[1],
+            llm_model=model,
+            tokenizer=tokenizer,
+            device=self.device,
+        )
+
+
+class DetertaEmbeddingLMSYSFlow:
     def __init__(self, config: Dict) -> None:
         self._config = config
         self.device = get_device()
@@ -187,7 +279,7 @@ class DetertaEmbeddingFlow:
         return model
 
     @time_it
-    def fit(self, data: pd.DataFrame) -> "DetertaEmbeddingFlow":
+    def fit(self, data: pd.DataFrame) -> "DetertaEmbeddingLMSYSFlow":
         tokenizer = self._setup_tokenizer()
         model = self._setup_model()
         self._save_tokenizer(tokenizer)

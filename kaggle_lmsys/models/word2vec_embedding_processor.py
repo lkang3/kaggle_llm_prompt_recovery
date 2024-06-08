@@ -1,4 +1,3 @@
-import pickle
 from typing import Callable
 from typing import Dict
 from typing import List
@@ -7,8 +6,6 @@ import numpy as np
 import pandas as pd
 from gensim.models.keyedvectors import KeyedVectors
 from gensim.utils import simple_preprocess
-from kaggle_lmsys.models.enum import DataType
-from kaggle_lmsys.models.entities import ModelData
 from kaggle_lmsys.utils import time_it
 
 
@@ -28,62 +25,7 @@ def get_sentence_embeddings(
     return aggregator(embeddings, axis=0)
 
 
-class W2VEmbeddingBasicFlow:
-    def __init__(self, config: Dict) -> None:
-        self._config = config
-        self.embedding_aggregators = {
-            "max": np.nanmax,
-            "min": np.nanmin,
-            "mean": np.nanmean,
-        }
-
-    @property
-    def config(self) -> Dict:
-        return self._config
-
-    def _load(self) -> object:
-        return KeyedVectors.load(self.config["model_path"])
-
-    def _save_self(self) -> None:
-        with open(self.config["pipeline_output_path"], "wb") as output_file:
-            pickle.dump(self, output_file)
-
-    def _save(self, model: object) -> None:
-        model.save(self.config["model_path"])
-
-    def fit(self, data: ModelData) -> "DetertaEmbeddingFlow":
-        # model = downloader.load(self.config["model_name"])
-        # self._save(model)
-        self._save_self()
-        return self
-
-    @time_it
-    def fit_and_inference(self, data: ModelData) -> np.ndarray:
-        self.fit(data)
-        return self.inference(data)
-
-    @time_it
-    def inference(self, data: ModelData) -> np.ndarray:
-        model = self._load()
-        data = pd.DataFrame(data=data.x, columns=data.col_names)
-        data = data.map(simple_preprocess)
-
-        aggregator_func = self.embedding_aggregators[self.config["embedding_aggregator"]]
-        all_embeddings = []
-        for col_name in data.columns:
-            prompt_embeddings = data[col_name].apply(
-                get_sentence_embeddings,
-                model=model,
-                aggregator=aggregator_func,
-            ).values
-
-            all_embeddings.append(np.vstack(prompt_embeddings.flatten()))
-
-        all_embeddings = np.concatenate(all_embeddings, axis=1)
-        return all_embeddings
-
-
-class W2VEmbeddingLMSYSFlow:
+class W2VEmbeddingProcessor:
     def __init__(self, config: Dict) -> None:
         self._config = config
         self.embedding_aggregators = {
@@ -103,6 +45,8 @@ class W2VEmbeddingLMSYSFlow:
         model.save(self.config["model_path"])
 
     def fit(self, data: pd.DataFrame) -> "DetertaEmbeddingFlow":
+        # model = downloader.load(self.config["model_name"])
+        # self._save(model)
         return self
 
     @time_it

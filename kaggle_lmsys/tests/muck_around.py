@@ -7,8 +7,8 @@ import pandas as pd
 from kaggle_lmsys.models.entities import ModelData
 from kaggle_lmsys.models.enum import DataType
 from kaggle_lmsys.models.classifier_lgbm_pipeline import LGBMClassifierPipeline
-from kaggle_lmsys.models.embedding_flow_deterta import DetertaEmbeddingFlow
-from kaggle_lmsys.models.embedding_flow_word2vec import W2VEmbeddingFlow
+from kaggle_lmsys.models.embedding_flow_deterta import DetertaEmbeddingLMSYSFlow
+from kaggle_lmsys.models.embedding_flow_word2vec import W2VEmbeddingLMSYSFlow
 
 
 SEED = 123
@@ -32,7 +32,7 @@ class TestW2VEmbeddingFlow:
             "model_path": "/home/lkang/Downloads/w2v_glove-twitter-200",
             "embedding_aggregator": "mean",
         }
-        flow = W2VEmbeddingFlow(config)
+        flow = W2VEmbeddingLMSYSFlow(config)
         flow.fit_and_inference(data)
 
 
@@ -52,7 +52,7 @@ class TestDetertaEmbeddingFlow:
             "max_resp_a_token_length": 255,
             "max_resp_b_token_length": 255,
         }
-        flow = DetertaEmbeddingFlow(config)
+        flow = DetertaEmbeddingLMSYSFlow(config)
         flow.inference(data)
 
 
