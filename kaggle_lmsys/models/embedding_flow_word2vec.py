@@ -13,19 +13,28 @@ from kaggle_lmsys.utils import time_it
 
 
 def get_sentence_embeddings(
-    sentence: List[str], model: object, aggregator: Callable,
-) -> np.ndarray:
+    sentence: List[str],
+    model: object,
+) -> Dict[str, np.ndarray]:
     # (num_tokens, embedding_size)
     embeddings = np.array(
         [
-            model.word_vec(word) if word in model.key_to_index else model.word_vec("unknown")
-            for word in sentence
+            (
+                model.word_vec(word)
+                if word in model.key_to_index
+                else model.word_vec("unknown")
+            )
+            for word in sentence.values[0]
         ]
     )
     if not len(embeddings):
         embeddings = np.array([model.word_vec("unknown")])
     # (embedding_size,)
-    return aggregator(embeddings, axis=0)
+    return {
+        "mean": np.nanmean(embeddings, axis=0),
+        "min": np.nanmin(embeddings, axis=0),
+        "max": np.nanmax(embeddings, axis=0),
+    }
 
 
 class W2VEmbeddingBasicFlow:
@@ -68,14 +77,20 @@ class W2VEmbeddingBasicFlow:
         data = pd.DataFrame(data=data.x, columns=data.col_names)
         data = data.map(simple_preprocess)
 
-        aggregator_func = self.embedding_aggregators[self.config["embedding_aggregator"]]
+        aggregator_func = self.embedding_aggregators[
+            self.config["embedding_aggregator"]
+        ]
         all_embeddings = []
         for col_name in data.columns:
-            prompt_embeddings = data[col_name].apply(
-                get_sentence_embeddings,
-                model=model,
-                aggregator=aggregator_func,
-            ).values
+            prompt_embeddings = (
+                data[col_name]
+                .apply(
+                    get_sentence_embeddings,
+                    model=model,
+                    aggregator=aggregator_func,
+                )
+                .values
+            )
 
             all_embeddings.append(np.vstack(prompt_embeddings.flatten()))
 
@@ -116,34 +131,53 @@ class W2VEmbeddingLMSYSFlow:
         prompt_field = self.config["data"]["prompt"]
         resp_a_field = self.config["data"]["resp_a"]
         resp_b_field = self.config["data"]["resp_b"]
-        data = data.loc[:, [prompt_field, resp_a_field, resp_b_field]].map(simple_preprocess)
+        data = data.loc[:, [prompt_field, resp_a_field, resp_b_field]].map(
+            simple_preprocess
+        )
 
-        aggregator_func = self.embedding_aggregators[self.config["embedding_aggregator"]]
-        prompt_embeddings = data[prompt_field].apply(
+        aggregator_func = self.embedding_aggregators[
+            self.config["embedding_aggregator"]
+        ]
+        prompt_embeddings = data.loc[:, [prompt_field]].apply(
             get_sentence_embeddings,
             model=model,
-            aggregator=aggregator_func,
-        ).values
-        resp_a_embeddings = data[resp_a_field].apply(
+            axis=1,
+            result_type="expand",
+        )
+        resp_a_embeddings = data.loc[:, [resp_a_field]].apply(
             get_sentence_embeddings,
             model=model,
-            aggregator=aggregator_func,
-        ).values
-        resp_b_embeddings = data[resp_b_field].apply(
+            axis=1,
+            result_type="expand",
+        )
+        resp_b_embeddings = data.loc[:, [resp_b_field]].apply(
             get_sentence_embeddings,
             model=model,
-            aggregator=aggregator_func,
-        ).values
+            axis=1,
+            result_type="expand",
+        )
 
-        prompt_embeddings = np.vstack(prompt_embeddings.flatten())
-        resp_a_embeddings = np.vstack(resp_a_embeddings.flatten())
-        resp_b_embeddings = np.vstack(resp_b_embeddings.flatten())
-        resp_diff_embeddings = resp_a_embeddings - resp_b_embeddings
+        prompt_embeddings_mean = np.vstack(prompt_embeddings["mean"].values.flatten())
+        prompt_embeddings_max = np.vstack(prompt_embeddings["max"].values.flatten())
+        prompt_embeddings_min = np.vstack(prompt_embeddings["min"].values.flatten())
+        resp_a_embeddings_mean = np.vstack(resp_a_embeddings["mean"].values.flatten())
+        resp_a_embeddings_max = np.vstack(resp_a_embeddings["max"].values.flatten())
+        resp_a_embeddings_min = np.vstack(resp_a_embeddings["min"].values.flatten())
+        resp_b_embeddings_mean = np.vstack(resp_b_embeddings["mean"].values.flatten())
+        resp_b_embeddings_max = np.vstack(resp_b_embeddings["max"].values.flatten())
+        resp_b_embeddings_min = np.vstack(resp_b_embeddings["min"].values.flatten())
 
+        resp_diff_embeddings = resp_a_embeddings_mean - resp_b_embeddings_mean
         all_embeddings = (
-            prompt_embeddings,
-            resp_a_embeddings,
-            resp_b_embeddings,
+            prompt_embeddings_mean,
+            prompt_embeddings_max,
+            prompt_embeddings_min,
+            resp_a_embeddings_mean,
+            resp_a_embeddings_max,
+            resp_a_embeddings_min,
+            resp_b_embeddings_mean,
+            resp_b_embeddings_max,
+            resp_b_embeddings_min,
             resp_diff_embeddings,
         )
         all_embeddings = np.concatenate(all_embeddings, axis=1)

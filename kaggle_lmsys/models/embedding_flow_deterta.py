@@ -20,14 +20,16 @@ def get_cosine_similarities_of_two_embeddings(
     embedding_one: np.ndarray, embedding_two: np.ndarray
 ) -> np.ndarray:
     if embedding_one.shape != embedding_two.shape:
-        raise ValueError(f"embedding_one shape: {embedding_one.shape} != embedding_two shape: {embedding_two.shape}")
+        raise ValueError(
+            f"embedding_one shape: {embedding_one.shape} != embedding_two shape: {embedding_two.shape}"
+        )
 
     size = len(embedding_one)
     similarities = np.zeros(embedding_one.size)
     for i in range(size):
-       similarities[i] = cosine_similarity(
-           embedding_one[i].reshape(1, -1), embedding_two[i].reshape(1, -1)
-       )
+        similarities[i] = cosine_similarity(
+            embedding_one[i].reshape(1, -1), embedding_two[i].reshape(1, -1)
+        )
 
     return similarities
 
@@ -56,12 +58,13 @@ def extract_deterta_embeddings(
     :return:
     """
 
+    first_hidden_states = []
     mean_hidden_states = []
     max_hidden_states = []
     min_hidden_states = []
     size_of_texts = len(texts)
     for i in range(0, size_of_texts, batch_size):
-        text = texts[i: min(size_of_texts, i + batch_size)]
+        text = texts[i : min(size_of_texts, i + batch_size)]
         tokenized_text = tokenizer(
             text,
             max_length=max_length,
@@ -71,6 +74,8 @@ def extract_deterta_embeddings(
         )
         tokenized_text.to(device)
         last_hidden_states = llm_model(**tokenized_text).last_hidden_state
+        if "first" in agg_operators:
+            first_hidden_states.append(last_hidden_states[:, 0, :])
         agg_axis = 1
         if "mean" in agg_operators:
             mean_hidden_states.append(last_hidden_states.mean(axis=agg_axis))
@@ -80,6 +85,8 @@ def extract_deterta_embeddings(
             min_hidden_states.append(last_hidden_states.min(axis=agg_axis))
 
     embedding_texts = defaultdict(list)
+    if first_hidden_states:
+        embedding_texts["first"] = torch.vstack(first_hidden_states)
     if mean_hidden_states:
         embedding_texts["mean"] = torch.vstack(mean_hidden_states)
     if max_hidden_states:
@@ -106,7 +113,8 @@ def run_embedding_feature_engineering(
     prompt_texts = data[prompt_field].tolist()
     resp_a_texts = data[resp_a_field].tolist()
     resp_b_texts = data[resp_b_field].tolist()
-    agg_operators = ["mean"]
+    agg_key = "first"
+    agg_operators = [agg_key]
 
     prompt_embeddings = extract_deterta_embeddings(
         batch_size,
@@ -136,19 +144,19 @@ def run_embedding_feature_engineering(
         agg_operators,
     )
 
-    resp_diff_embeddings = resp_a_embeddings["mean"] - resp_b_embeddings["mean"]
+    resp_diff_embeddings = resp_a_embeddings[agg_key] - resp_b_embeddings[agg_key]
     cs = CosineSimilarity(dim=1)
     resp_a_and_prompt_cosine_similarity = cs(
-        resp_a_embeddings["mean"], prompt_embeddings["mean"]
+        resp_a_embeddings[agg_key], prompt_embeddings[agg_key]
     ).unsqueeze(-1)
     resp_b_and_prompt_cosine_similarity = cs(
-        resp_b_embeddings["mean"], prompt_embeddings["mean"]
+        resp_b_embeddings[agg_key], prompt_embeddings[agg_key]
     ).unsqueeze(-1)
 
     all_embeddings = (
-        prompt_embeddings["mean"],
-        resp_a_embeddings["mean"],
-        resp_b_embeddings["mean"],
+        prompt_embeddings[agg_key],
+        resp_a_embeddings[agg_key],
+        resp_b_embeddings[agg_key],
         resp_diff_embeddings,
         resp_a_and_prompt_cosine_similarity,
         resp_b_and_prompt_cosine_similarity,
