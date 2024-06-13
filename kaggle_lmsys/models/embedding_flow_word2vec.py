@@ -138,12 +138,6 @@ class W2VEmbeddingLMSYSFlow:
         aggregator_func = self.embedding_aggregators[
             self.config["embedding_aggregator"]
         ]
-        prompt_embeddings = data.loc[:, [prompt_field]].apply(
-            get_sentence_embeddings,
-            model=model,
-            axis=1,
-            result_type="expand",
-        )
         resp_a_embeddings = data.loc[:, [resp_a_field]].apply(
             get_sentence_embeddings,
             model=model,
@@ -156,10 +150,6 @@ class W2VEmbeddingLMSYSFlow:
             axis=1,
             result_type="expand",
         )
-
-        prompt_embeddings_mean = np.vstack(prompt_embeddings["mean"].values.flatten())
-        prompt_embeddings_max = np.vstack(prompt_embeddings["max"].values.flatten())
-        prompt_embeddings_min = np.vstack(prompt_embeddings["min"].values.flatten())
         resp_a_embeddings_mean = np.vstack(resp_a_embeddings["mean"].values.flatten())
         resp_a_embeddings_max = np.vstack(resp_a_embeddings["max"].values.flatten())
         resp_a_embeddings_min = np.vstack(resp_a_embeddings["min"].values.flatten())
@@ -169,9 +159,6 @@ class W2VEmbeddingLMSYSFlow:
 
         resp_diff_embeddings = resp_a_embeddings_mean - resp_b_embeddings_mean
         all_embeddings = (
-            prompt_embeddings_mean,
-            prompt_embeddings_max,
-            prompt_embeddings_min,
             resp_a_embeddings_mean,
             resp_a_embeddings_max,
             resp_a_embeddings_min,

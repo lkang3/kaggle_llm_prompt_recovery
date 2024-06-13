@@ -113,7 +113,7 @@ def run_embedding_feature_engineering(
     prompt_texts = data[prompt_field].tolist()
     resp_a_texts = data[resp_a_field].tolist()
     resp_b_texts = data[resp_b_field].tolist()
-    agg_key = "first"
+    agg_key = "mean"
     agg_operators = [agg_key]
 
     prompt_embeddings = extract_deterta_embeddings(
@@ -154,7 +154,6 @@ def run_embedding_feature_engineering(
     ).unsqueeze(-1)
 
     all_embeddings = (
-        prompt_embeddings[agg_key],
         resp_a_embeddings[agg_key],
         resp_b_embeddings[agg_key],
         resp_diff_embeddings,

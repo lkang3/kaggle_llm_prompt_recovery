@@ -31,7 +31,7 @@ pipeline_basic_embedding_tfidf:
       strip_accents: "unicode"
       min_df: 10
       max_features: 300
-  data: ["prompt", "response_a", "response_b"]
+  data: ["response_a", "response_b"]
   pipeline_output_path: "/kaggle/working/basic_embedding_tfidf_pipeline.pkl"
 
 pipeline_embedding_w2v:
