@@ -16,6 +16,7 @@ from kaggle_lmsys.models.entities import ModelData
 from kaggle_lmsys.models.embedding_flow_deterta import DetertaEmbeddingLMSYSFlow
 from kaggle_lmsys.models.embedding_flow_word2vec import W2VEmbeddingLMSYSFlow
 from kaggle_lmsys.models.embedding_flow_tfidf import TFIDFLMSYSFlow
+from kaggle_lmsys.models.embedding_flow_length import LengthFeatureEmbeddingLMSYSFlow
 
 logger = logging.getLogger(__name__)
 logger.addHandler(logging.StreamHandler(sys.stdout))
@@ -65,6 +66,7 @@ def go(
         },
     )
     pipeline_basic_embedding_tfidf = config["pipeline_basic_embedding_tfidf"]
+    pipeline_embedding_length_feature = config["pipeline_embedding_length_feature"]
     classifier_lgbm_pipeline_config = config["classifier_lgbm_pipeline"]
 
     # data loading
@@ -87,6 +89,13 @@ def go(
     )
     tfidf_embeddings = tfidf_embedding_flow.inference(data)
     model_inputs.append(tfidf_embeddings)
+
+    # length feature embeddings
+    length_feature_embedding_flow = LengthFeatureEmbeddingLMSYSFlow(
+        pipeline_embedding_length_feature
+    )
+    length_feature_embeddings = length_feature_embedding_flow.fit_and_inference(data)
+    model_inputs.append(length_feature_embeddings)
 
     # deberta tokenizer embeddings inference
     deterta_embedding_flow = DetertaEmbeddingLMSYSFlow(pipeline_embedding_deterba_config)

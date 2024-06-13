@@ -4,6 +4,7 @@ from typing import Dict
 import lightgbm as lgbm
 import numpy as np
 from scipy.sparse import csr_matrix
+from sklearn.model_selection import StratifiedKFold
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import RobustScaler
 from sklearn.preprocessing import StandardScaler
@@ -25,7 +26,7 @@ class LGBMClassifierPipeline:
     def config(self) -> Dict:
         return self._config
 
-    def _preprocess(self, model_data: ModelData) -> np.ndarray:
+    def _preprocess_train(self, model_data: ModelData) -> np.ndarray:
         num_x = np.zeros((model_data.num_rows, 0))
         cat_x = np.zeros((model_data.num_rows, 0))
         if model_data.has_data_type(DataType.NUM):
@@ -61,7 +62,7 @@ class LGBMClassifierPipeline:
 
     @time_it
     def fit(self, model_data: ModelData) -> "LGBMClassifierPipeline":
-        x = self._preprocess(model_data)
+        x = self._preprocess_train(model_data)
         x = csr_matrix(x)
         x_train, x_test, y_train, y_test = train_test_split(
             x,
@@ -88,3 +89,49 @@ class LGBMClassifierPipeline:
     def predict_proba(self, model_data: ModelData) -> np.ndarray:
         x = self._preprocess_inference(model_data)
         return self.estimator.predict_proba(x)
+
+
+class LGBMClassifierCVBlendingPipeline(LGBMClassifierPipeline):
+    def __init__(self, config: Dict) -> None:
+        super().__init__(config)
+        self.estimator = None
+        self.estimators = []
+
+    @time_it
+    def fit(self, model_data: ModelData) -> "LGBMClassifierPipeline":
+        x = self._preprocess_train(model_data)
+        x = csr_matrix(x)
+        kfolds = StratifiedKFold(n_splits=4, random_state=self.config["seed"], shuffle=True)
+        for i, (train_index, test_index) in enumerate(kfolds.split(x, model_data.y)):
+            print(f">>>>>>>>>>>>>>>>>>>>CV: {i}")
+            x_train = x[train_index]
+            y_train = model_data.y[train_index]
+            x_test = x[test_index]
+            y_test = model_data.y[test_index]
+            estimator = lgbm.LGBMClassifier(**self.config["lgbm"]["params"])
+            estimator.fit(
+                x_train,
+                y_train,
+                eval_set=[(x_test, y_test)],
+                eval_metric="multi_logloss",
+                callbacks=[
+                    lgbm.early_stopping(
+                        stopping_rounds=self.config["lgbm"]["early_stopping"],
+                        verbose=False,
+                    ),
+                    lgbm.log_evaluation(period=100),
+                ],
+            )
+            self.estimators.append(estimator)
+        self.save()
+        return self
+
+    @time_it
+    def predict_proba(self, model_data: ModelData) -> np.ndarray:
+        x = self._preprocess_inference(model_data)
+
+        pred_proba_outputs = []
+        for estimator in self.estimators:
+            pred_proba_outputs.append(estimator.predict_proba(x))
+
+        return np.mean(pred_proba_outputs, axis=0)
