@@ -93,16 +93,6 @@ def go(
 
     model_inputs: List[np.ndarray] = []
 
-    # w2v embeddings fit/inference
-    w2v_embedding_flow = W2VEmbeddingLMSYSFlow(pipeline_embedding_w2v_config)
-    w2v_embeddings = w2v_embedding_flow.fit_and_inference(data)
-    model_inputs.append(w2v_embeddings)
-
-    # tfidf embeddings fit/inference
-    tfidf_embedding_flow = TFIDFLMSYSFlow(pipeline_basic_embedding_tfidf)
-    tfidf_embeddings = tfidf_embedding_flow.fit_and_inference(data)
-    model_inputs.append(tfidf_embeddings)
-
     # length feature embeddings
     length_feature_embedding_flow = LengthFeatureEmbeddingLMSYSFlow(
         pipeline_embedding_length_feature
