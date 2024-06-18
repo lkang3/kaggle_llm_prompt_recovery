@@ -1,6 +1,9 @@
 import copy
 import logging
 import sys
+import pickle
+
+import pandas as pd
 import yaml
 from pathlib import Path
 from typing import List
@@ -20,6 +23,8 @@ from kaggle_lmsys.models.embedding_flow_word2vec import W2VEmbeddingLMSYSFlow
 from kaggle_lmsys.models.embedding_flow_length import LengthFeatureEmbeddingLMSYSFlow
 from kaggle_lmsys.models.classifier_lgbm_pipeline import LGBMClassifierPipeline
 from kaggle_lmsys.models.classifier_lgbm_pipeline import LGBMClassifierCVBlendingPipeline
+from kaggle_lmsys.models.utils import merge_model_data
+
 
 logger = logging.getLogger(__name__)
 logger.addHandler(logging.StreamHandler(sys.stdout))
@@ -100,6 +105,11 @@ def go(
     length_feature_embeddings = length_feature_embedding_flow.fit_and_inference(data)
     model_inputs.append(length_feature_embeddings)
 
+    # word2vec
+    w2v_embeddings_flow = W2VEmbeddingLMSYSFlow(pipeline_embedding_w2v_config)
+    w2v_embeddings = w2v_embeddings_flow.fit_and_inference(data)
+    model_inputs.append(w2v_embeddings)
+
     # deberta tokenizer embeddings fit/inference
     deberta_embedding_flow = DetertaEmbeddingLMSYSFlow(pipeline_embedding_deterba_config)
     deberta_embeddings = deberta_embedding_flow.fit_and_inference(data)
@@ -107,15 +117,18 @@ def go(
 
     # classifier fit
     classifier = LGBMClassifierCVBlendingPipeline(classifier_lgbm_pipeline_config)
-    model_data_ndarray = np.concatenate(model_inputs, axis=1)
-    model_data_types = [DataType.NUM] * sum(model_input.shape[1] for model_input in model_inputs)
-    model_data = ModelData(
-        data_types=np.array(model_data_types),
-        x=model_data_ndarray,
-        y=data[add_target_field].values,
-    )
+    model_data = merge_model_data(model_inputs)
+    model_data.y = data[add_target_field].values
     classifier.fit(model_data)
     classifier.save()
+
+    for est_idx, feature_importances in classifier.get_feature_importance().items():
+        feature_importance = pd.DataFrame(
+            data=feature_importances, index=model_data.col_names, columns=["feature_importance"]
+        )
+        feature_importance.to_csv(
+            f"/kaggle/working/model_output/fi_{est_idx}.csv", index_label="key"
+        )
 
 
 if __name__ == "__main__":

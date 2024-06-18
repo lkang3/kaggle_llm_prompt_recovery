@@ -37,12 +37,12 @@ class LengthFeatureEmbeddingLMSYSFlow:
         return self
 
     @time_it
-    def fit_and_inference(self, data: pd.DataFrame) -> np.ndarray:
+    def fit_and_inference(self, data: pd.DataFrame) -> ModelData:
         self.fit(data)
         return self.inference(data)
 
     @time_it
-    def inference(self, data: pd.DataFrame) -> np.ndarray:
+    def inference(self, data: pd.DataFrame) -> ModelData:
         resp_a_field = self.config["data"]["resp_a"]
         resp_b_field = self.config["data"]["resp_b"]
         resp_a = data[resp_a_field]
@@ -59,7 +59,20 @@ class LengthFeatureEmbeddingLMSYSFlow:
         resp_len_mean = resp_len_mean.reshape((-1, 1))
         resp_len_diff_mean_ratio = resp_len_diff_mean_ratio.reshape((-1, 1))
 
-        return np.concatenate(
+        embeddings = np.concatenate(
             [resp_a_len, resp_b_len, resp_len_diff, resp_len_mean, resp_len_diff_mean_ratio],
             axis=1,
+        )
+        col_names = [
+            "resp_a_len",
+            "resp_b_len",
+            "resp_a_b_len_diff",
+            "resp_a_b_len_mean",
+            "resp_a_b_len_ratio",
+        ]
+
+        return ModelData(
+            x=embeddings,
+            data_types=[DataType.NUM] * embeddings.shape[1],
+            col_names=col_names,
         )

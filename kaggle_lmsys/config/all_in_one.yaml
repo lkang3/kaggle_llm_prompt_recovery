@@ -53,11 +53,25 @@ pipeline_embedding_deberta:
   max_resp_a_token_length: 255
   max_resp_b_token_length: 255
 
+deberta_embedding_diff_pipeline:
+  model_output_path: "/kaggle/working/model_output/deberta_embedding_diff_pipeline.pkl"
+  col_pairs:
+    [
+      ["resp_a_mean", "resp_b_mean"],
+    ]
+
+deberta_embedding_cosine_similarity_pipeline:
+  model_output_path: "/kaggle/working/model_output/deberta_embedding_diff_pipeline.pkl"
+  col_pairs:
+    [
+      ["resp_a_mean", "prompt_mean"],
+      ["resp_b_mean", "prompt_mean"],
+    ]
+
 classifier_lgbm_pipeline:
   lgbm:
     params:
-        n_estimators: 1000
-        max_depth: 4
+        n_estimators: 3000
         subsample: 0.8
         colsample_bytree: 0.8
         objective: "multiclass"
@@ -68,6 +82,6 @@ classifier_lgbm_pipeline:
         class_weight: "balanced"
         verbose: -1
     eval_pct: 0.2
-    early_stopping: 100
+    early_stopping: 1000
   seed: 123
   output_path: "/kaggle/working/lgbm_model.pkl"

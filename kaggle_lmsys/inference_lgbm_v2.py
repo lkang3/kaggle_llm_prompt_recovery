@@ -17,6 +17,7 @@ from kaggle_lmsys.models.embedding_flow_deterta import DetertaEmbeddingLMSYSFlow
 from kaggle_lmsys.models.embedding_flow_word2vec import W2VEmbeddingLMSYSFlow
 from kaggle_lmsys.models.embedding_flow_tfidf import TFIDFLMSYSFlow
 from kaggle_lmsys.models.embedding_flow_length import LengthFeatureEmbeddingLMSYSFlow
+from kaggle_lmsys.models.utils import merge_model_data
 
 logger = logging.getLogger(__name__)
 logger.addHandler(logging.StreamHandler(sys.stdout))
@@ -85,6 +86,11 @@ def go(
     length_feature_embeddings = length_feature_embedding_flow.fit_and_inference(data)
     model_inputs.append(length_feature_embeddings)
 
+    # word2vec
+    w2v_embeddings_flow = W2VEmbeddingLMSYSFlow(pipeline_embedding_w2v_config)
+    w2v_embeddings = w2v_embeddings_flow.fit_and_inference(data)
+    model_inputs.append(w2v_embeddings)
+
     # deberta tokenizer embeddings inference
     deterta_embedding_flow = DetertaEmbeddingLMSYSFlow(pipeline_embedding_deterba_config)
     deberta_embeddings = deterta_embedding_flow.inference(data)
@@ -92,12 +98,7 @@ def go(
 
     # classifier fit
     classifier = pickle.load(open(classifier_lgbm_pipeline_config["output_path"], "rb"))
-    model_data_ndarray = np.concatenate(model_inputs, axis=1)
-    model_data_types = [DataType.NUM] * sum(model_input.shape[1] for model_input in model_inputs)
-    model_data = ModelData(
-        data_types=np.array(model_data_types),
-        x=model_data_ndarray,
-    )
+    model_data = merge_model_data(model_inputs)
     preds = classifier.predict_proba(model_data)
     outputs = pd.DataFrame(
         {

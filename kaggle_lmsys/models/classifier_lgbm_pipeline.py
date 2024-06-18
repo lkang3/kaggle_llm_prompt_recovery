@@ -97,6 +97,12 @@ class LGBMClassifierCVBlendingPipeline(LGBMClassifierPipeline):
         self.estimator = None
         self.estimators = []
 
+    def get_feature_importance(self) -> Dict[str, np.array]:
+        return {
+            est_idx: estimator.feature_importances_
+            for est_idx, estimator in enumerate(self.estimators)
+        }
+
     @time_it
     def fit(self, model_data: ModelData) -> "LGBMClassifierPipeline":
         x = self._preprocess_train(model_data)

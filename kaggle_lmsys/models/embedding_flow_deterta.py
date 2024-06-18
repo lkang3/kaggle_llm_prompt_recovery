@@ -2,6 +2,7 @@ import pickle
 from collections import defaultdict
 from typing import Dict
 from typing import List
+from typing import Tuple
 
 import numpy as np
 import pandas as pd
@@ -12,6 +13,7 @@ from transformers import AutoModel
 from transformers import AutoTokenizer
 
 from kaggle_lmsys.models.entities import ModelData
+from kaggle_lmsys.models.enum import DataType
 from kaggle_lmsys.utils import get_device
 from kaggle_lmsys.utils import time_it
 
@@ -109,7 +111,7 @@ def run_embedding_feature_engineering(
     tokenizer: AutoTokenizer,
     device: torch.device,
     batch_size: int = 10,
-) -> np.ndarray:
+) -> Tuple[List[str], np.ndarray]:
     prompt_texts = data[prompt_field].tolist()
     resp_a_texts = data[resp_a_field].tolist()
     resp_b_texts = data[resp_b_field].tolist()
@@ -154,14 +156,16 @@ def run_embedding_feature_engineering(
     ).unsqueeze(-1)
 
     all_embeddings = (
-        resp_a_embeddings[agg_key],
-        resp_b_embeddings[agg_key],
         resp_diff_embeddings,
         resp_a_and_prompt_cosine_similarity,
         resp_b_and_prompt_cosine_similarity,
     )
+    col_names = []
+    col_names.extend([f"resp_a_b_diff_{i}" for i in range(resp_diff_embeddings.shape[1])])
+    col_names.extend([f"resp_a_b_cs_{i}" for i in range(resp_a_and_prompt_cosine_similarity.shape[1])])
+    col_names.extend([f"resp_a_b_cs_{i}" for i in range(resp_b_and_prompt_cosine_similarity.shape[1])])
     all_embeddings = torch.concatenate(all_embeddings, axis=1)
-    return all_embeddings.detach().cpu().numpy()
+    return col_names, all_embeddings.detach().cpu().numpy()
 
 
 @time_it
@@ -293,16 +297,16 @@ class DetertaEmbeddingLMSYSFlow:
         self._save_model(model)
         return self
 
-    def fit_and_inference(self, data: pd.DataFrame) -> np.ndarray:
+    def fit_and_inference(self, data: pd.DataFrame) -> ModelData:
         self.fit(data)
         return self.inference(data)
 
     @time_it
-    def inference(self, data: pd.DataFrame) -> np.ndarray:
+    def inference(self, data: pd.DataFrame) -> ModelData:
         tokenizer = self._load_tokenizer()
         model = self._load_model()
 
-        return run_embedding_feature_engineering(
+        col_names, embeddings = run_embedding_feature_engineering(
             data=data,
             prompt_field=self.config["data"]["prompt"],
             max_prompt_token_length=self.config["max_prompt_token_length"],
@@ -313,4 +317,10 @@ class DetertaEmbeddingLMSYSFlow:
             llm_model=model,
             tokenizer=tokenizer,
             device=self.device,
+        )
+
+        return ModelData(
+            x=embeddings,
+            col_names=col_names,
+            data_types=[DataType.NUM] * embeddings.shape[1],
         )

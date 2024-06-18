@@ -26,5 +26,5 @@ class ModelData:
         return data_type in self.data_types
 
     def get_x_by_data_type(self, data_type: DataType) -> np.ndarray:
-        col_selector = self.data_types == data_type
+        col_selector = np.array(self.data_types) == data_type
         return self.x[:, col_selector]

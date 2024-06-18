@@ -60,14 +60,24 @@ class TFIDFLMSYSFlow:
         return self
 
     @time_it
-    def fit_and_inference(self, data: ModelData) -> np.ndarray:
+    def fit_and_inference(self, data: ModelData) -> ModelData:
         self.fit(data)
         return self.inference(data)
 
     @time_it
-    def inference(self, data: ModelData) -> np.ndarray:
+    def inference(self, data: ModelData) -> ModelData:
         all_embeddings = []
+        col_names = []
         for col_name in self.col_names:
             embeddings = self.model.transform(data[col_name].values)
-            all_embeddings.append(embeddings.toarray())
-        return np.concatenate(all_embeddings, axis=1)
+            embeddings = embeddings.toarray()
+            all_embeddings.append(embeddings)
+            col_names.extend([f"{col_name}_tfidf_{i}" for i in range(embeddings.shape[1])])
+
+        embeddings = np.concatenate(all_embeddings, axis=1)
+
+        return ModelData(
+            x=embeddings,
+            data_types=[DataType.NUM] * embeddings.shape[1],
+            col_names=col_names,
+        )

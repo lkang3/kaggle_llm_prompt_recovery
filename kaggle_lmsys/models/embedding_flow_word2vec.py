@@ -121,12 +121,12 @@ class W2VEmbeddingLMSYSFlow:
         return self
 
     @time_it
-    def fit_and_inference(self, data: pd.DataFrame) -> np.ndarray:
+    def fit_and_inference(self, data: pd.DataFrame) -> ModelData:
         self.fit(data)
         return self.inference(data)
 
     @time_it
-    def inference(self, data: pd.DataFrame) -> np.ndarray:
+    def inference(self, data: pd.DataFrame) -> ModelData:
         model = self._load()
         prompt_field = self.config["data"]["prompt"]
         resp_a_field = self.config["data"]["resp_a"]
@@ -151,21 +151,22 @@ class W2VEmbeddingLMSYSFlow:
             result_type="expand",
         )
         resp_a_embeddings_mean = np.vstack(resp_a_embeddings["mean"].values.flatten())
-        resp_a_embeddings_max = np.vstack(resp_a_embeddings["max"].values.flatten())
-        resp_a_embeddings_min = np.vstack(resp_a_embeddings["min"].values.flatten())
         resp_b_embeddings_mean = np.vstack(resp_b_embeddings["mean"].values.flatten())
-        resp_b_embeddings_max = np.vstack(resp_b_embeddings["max"].values.flatten())
-        resp_b_embeddings_min = np.vstack(resp_b_embeddings["min"].values.flatten())
 
         resp_diff_embeddings = resp_a_embeddings_mean - resp_b_embeddings_mean
         all_embeddings = (
             resp_a_embeddings_mean,
-            resp_a_embeddings_max,
-            resp_a_embeddings_min,
             resp_b_embeddings_mean,
-            resp_b_embeddings_max,
-            resp_b_embeddings_min,
             resp_diff_embeddings,
         )
         all_embeddings = np.concatenate(all_embeddings, axis=1)
-        return all_embeddings
+        col_names = []
+        col_names.extend([f"resp_a_w2v_mean_{i}" for i in range(resp_a_embeddings_mean.shape[1])])
+        col_names.extend([f"resp_b_w2v_mean_{i}" for i in range(resp_b_embeddings_mean.shape[1])])
+        col_names.extend([f"resp_a_b_w2v_mean_diff_{i}" for i in range(resp_diff_embeddings.shape[1])])
+
+        return ModelData(
+            x=all_embeddings,
+            data_types=[DataType.NUM] * all_embeddings.shape[1],
+            col_names=col_names,
+        )
