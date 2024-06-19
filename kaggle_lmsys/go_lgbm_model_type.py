@@ -9,6 +9,7 @@ from sklearn.model_selection import KFold
 from sklearn.model_selection import StratifiedKFold
 import click
 import numpy as np
+import pandas as pd
 import torch
 from huggingface_hub import login as hf_login
 
@@ -17,8 +18,11 @@ from kaggle_lmsys.utils import clean_data
 from kaggle_lmsys.models.enum import DataType
 from kaggle_lmsys.models.entities import ModelData
 from kaggle_lmsys.models.embedding_flow_word2vec import W2VEmbeddingBasicFlow
+from kaggle_lmsys.models.embedding_flow_length import LengthFeatureEmbeddingBasicFlow
 from kaggle_lmsys.models.embedding_flow_deterta import DetertaEmbeddingBasicFlow
 from kaggle_lmsys.models.classifier_lgbm_pipeline import LGBMClassifierPipeline
+from kaggle_lmsys.models.classifier_lgbm_pipeline import LGBMClassifierCVBlendingPipeline
+from kaggle_lmsys.models.utils import merge_model_data
 
 logger = logging.getLogger(__name__)
 logger.addHandler(logging.StreamHandler(sys.stdout))
@@ -36,11 +40,13 @@ numpy_gen = np.random.Generator(np.random.PCG64(seed=SEED))
 @click.command()
 @click.option("--hf_token", type=str, required=False)
 @click.option("--for_test", type=bool, default=False, required=True)
+@click.option("--for_test_pct", type=float, default=1.0, required=True)
 @click.option("--config_path", type=str, required=True)
 def go(
-    for_test: bool,
-    config_path: str,
     hf_token: str,
+    for_test: bool,
+    for_test_pct: float,
+    config_path: str,
 ) -> None:
     # login
     hf_login(hf_token)
@@ -51,7 +57,8 @@ def go(
     data_config = config["data"]
     pipeline_embedding_w2v_config = config["pipeline_basic_embedding_w2v"]
     pipeline_embedding_deterba_config = config["pipeline_basic_embedding_deberta"]
-    classifier_lgbm_pipeline_config = config["classifier_lgbm_pipeline"]
+    pipeline_embedding_length_feature = config["pipeline_basic_embedding_length_feature"]
+    classifier_lgbm_pipeline_config = config["model_type_classifier_lgbm_pipeline"]
 
     # data loading
     input_data_path = Path(data_config["train_data_path"])
@@ -60,57 +67,46 @@ def go(
     data["model_a"] = data["model_a"].apply(lambda row: row.split("-")[0])
     data["model_b"] = data["model_b"].apply(lambda row: row.split("-")[0])
     if for_test:
-        data = data.iloc[:10000, :]
+        num_samples = int(for_test_pct * len(data))
+        data = data.iloc[:num_samples, :]
     data, num_of_targets = create_model_type_train_data(
         data,
         output_prompt_field_name="prompt",
         output_response_field_name="response",
         output_model_type_field_name="labels",
     )
+    classifier_lgbm_pipeline_config["lgbm"]["params"]["num_class"] = num_of_targets
 
-    model_inputs_x: List[np.ndarray] = []
+    model_inputs: List[np.ndarray] = []
+    # length feature embeddings
+    length_feature_embedding_flow = LengthFeatureEmbeddingBasicFlow(
+        pipeline_embedding_length_feature
+    )
+    length_feature_embeddings = length_feature_embedding_flow.fit_and_inference(data)
+    model_inputs.append(length_feature_embeddings)
     # w2v embeddings fit/inference
     embedding_flow = W2VEmbeddingBasicFlow(pipeline_embedding_w2v_config)
-    input_data = ModelData(
-        x=data["response"].values,
-        data_types=[DataType.TXT],
-        col_names=["response"],
-    )
-    w2v_embeddings = embedding_flow.fit_and_inference(input_data)
-    model_inputs_x.append(w2v_embeddings)
+    w2v_embeddings = embedding_flow.fit_and_inference(data)
+    model_inputs.append(w2v_embeddings)
     # deberta tokenizer embeddings fit/inference
     embedding_flow = DetertaEmbeddingBasicFlow(pipeline_embedding_deterba_config)
-    deberta_embeddings = embedding_flow.fit_and_inference(input_data)
-    model_inputs_x.append(deberta_embeddings)
+    deberta_embeddings = embedding_flow.fit_and_inference(data)
+    model_inputs.append(deberta_embeddings)
 
-    # training setup
-    model_inputs_x = np.concatenate(model_inputs_x, axis=1)
-    model_inputs_y = data["labels"].values
-    training_config = {"cv": 3}
-    kfolds = StratifiedKFold(training_config["cv"], random_state=SEED, shuffle=True)
-    for train_indices, test_indices in kfolds.split(np.ones(len(data)), model_inputs_y):
-        train_x = model_inputs_x[train_indices, :]
-        train_y = model_inputs_y[train_indices]
-        test_x = model_inputs_x[test_indices, :]
-        test_y = model_inputs_y[test_indices]
+    # classifier fit
+    classifier = LGBMClassifierCVBlendingPipeline(classifier_lgbm_pipeline_config)
+    model_data = merge_model_data(model_inputs)
+    model_data.y = data["labels"].values
+    classifier.fit(model_data)
+    classifier.save()
 
-        classifier = LGBMClassifierPipeline(classifier_lgbm_pipeline_config)
-        model_data_types = np.array([DataType.NUM] * train_x.shape[1])
-        train_model_data = ModelData(
-            data_types=model_data_types,
-            x=train_x,
-            y=train_y,
+    for est_idx, feature_importances in classifier.get_feature_importance().items():
+        feature_importance = pd.DataFrame(
+            data=feature_importances, index=model_data.col_names, columns=["feature_importance"]
         )
-        classifier.fit(train_model_data)
-        classifier.save()
-
-        test_model_data = ModelData(
-            data_types=model_data_types,
-            x=test_x,
+        feature_importance.to_csv(
+            f"/kaggle/working/model_output/fi_{est_idx}.csv", index_label="key"
         )
-        pred_test_y = classifier.predict_proba(test_model_data)
-        print(f">>>>>>>>>>>>>>>>>>> {pred_test_y.shape}")
-        print(f">>>>>>>>>>>>>>>>>>>>>>>>>>>>>> {log_loss(test_y, pred_test_y)}")
 
 
 if __name__ == "__main__":

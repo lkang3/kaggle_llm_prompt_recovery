@@ -24,6 +24,40 @@ def str_length(vals) -> int:
     return length
 
 
+class LengthFeatureEmbeddingBasicFlow:
+
+    def __init__(self, config: Dict) -> None:
+        self._config = config
+        self.col_names = self.config["features"]
+
+    @property
+    def config(self) -> Dict:
+        return self._config
+
+    def fit(self, data: pd.DataFrame) -> "DetertaEmbeddingFlow":
+        return self
+
+    @time_it
+    def fit_and_inference(self, data: pd.DataFrame) -> ModelData:
+        self.fit(data)
+        return self.inference(data)
+
+    @time_it
+    def inference(self, data: pd.DataFrame) -> ModelData:
+
+        all_embeddings = []
+        for col_name in self.col_names:
+            all_embeddings.append(data[col_name].apply(len).values.reshape((-1, 1)))
+
+        embeddings = np.concatenate(all_embeddings, axis=1)
+        col_names = [f"len_{col_name}" for col_name in self.col_names]
+        return ModelData(
+            x=embeddings,
+            data_types=[DataType.NUM] * embeddings.shape[1],
+            col_names=col_names,
+        )
+
+
 class LengthFeatureEmbeddingLMSYSFlow:
 
     def __init__(self, config: Dict) -> None:

@@ -6,9 +6,6 @@ from kaggle_lmsys.models.entities import ModelData
 
 
 def merge_model_data(model_data_list: List[ModelData]) -> ModelData:
-    for model_data in model_data_list:
-        print(f">>>>>>>>>>>>>>>>>>> {model_data.x.shape}")  # P4T
-        print(f">>>>>>>>>>>>>>>>>>> {type(model_data.x)}")  # P4T
     merged_x = np.concatenate([model_data.x for model_data in model_data_list], axis=1)
     merged_data_types = []
     for model_data in model_data_list:

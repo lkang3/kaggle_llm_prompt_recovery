@@ -171,16 +171,19 @@ def run_embedding_feature_engineering(
 @time_it
 def get_embeddings(
     data: pd.DataFrame,
+    col_names: List[str],
     max_token_lengths: List[int],
     llm_model: object,
     tokenizer: AutoTokenizer,
     device: torch.device,
+    agg_key: str,
     batch_size: int = 10,
 ) -> np.ndarray:
-    agg_operators = ["mean"]
+    agg_operators = [agg_key]
 
     all_embeddings = []
-    for col_name, max_token_length in zip(data.columns, max_token_lengths):
+    output_col_names = []
+    for col_name, max_token_length in zip(col_names, max_token_lengths):
         embeddings = extract_deterta_embeddings(
             batch_size,
             data[col_name].tolist(),
@@ -190,21 +193,20 @@ def get_embeddings(
             device,
             agg_operators,
         )
-        all_embeddings.append(embeddings["mean"])
+        output_col_names.extend([f"dbt_{col_name}_{i}" for i in range(embeddings[agg_key].shape[1])])
+        all_embeddings.append(embeddings[agg_key])
 
     all_embeddings = torch.concatenate(all_embeddings, axis=1)
-    return all_embeddings.detach().cpu().numpy()
+    return output_col_names, all_embeddings.detach().cpu().numpy()
 
 
 class DetertaEmbeddingBasicFlow:
     def __init__(self, config: Dict) -> None:
         self._config = config
         self.device = get_device()
-        self.embedding_aggregators = {
-            "max": np.nanmax,
-            "min": np.nanmin,
-            "mean": np.nanmean,
-        }
+        self.col_names = self.config["features"]
+        self.max_token_lengths = [self.config["max_token_length"]] * len(self.col_names)
+        self.agg_key = self.config["embedding_aggregator"]
 
     @property
     def config(self) -> Dict:
@@ -218,11 +220,11 @@ class DetertaEmbeddingBasicFlow:
         llm_model.to(self.device)
         return llm_model
 
-    def _save(self, tokenizer: object, model: object) -> None:
+    def _save_tokenizer(self, tokenizer: object) -> None:
         tokenizer.save_pretrained(self.config["tokenizer_output_path"])
+
+    def _save_model(self, model: object) -> None:
         model.save_pretrained(self.config["model_output_path"])
-        with open(self.config["pipeline_output_path"], "wb") as output_file:
-            pickle.dump(self, output_file)
 
     def _load_tokenizer(self) -> object:
         return AutoTokenizer.from_pretrained(self.config["tokenizer_output_path"])
@@ -233,28 +235,37 @@ class DetertaEmbeddingBasicFlow:
         return model
 
     @time_it
-    def fit(self, data: ModelData) -> "DetertaEmbeddingLMSYSFlow":
+    def fit(self, data: pd.DataFrame) -> "DetertaEmbeddingLMSYSFlow":
         tokenizer = self._setup_tokenizer()
         model = self._setup_model()
-        self._save(tokenizer, model)
+        self._save_tokenizer(tokenizer)
+        self._save_model(model)
         return self
 
-    def fit_and_inference(self, data: ModelData) -> np.ndarray:
+    def fit_and_inference(self, data: pd.DataFrame) -> ModelData:
         self.fit(data)
         return self.inference(data)
 
     @time_it
-    def inference(self, data: ModelData) -> np.ndarray:
+    def inference(self, data: pd.DataFrame) -> ModelData:
         tokenizer = self._load_tokenizer()
         model = self._load_model()
 
-        data = pd.DataFrame(data=data.x, columns=data.col_names)
-        return get_embeddings(
+        col_names, embeddings = get_embeddings(
             data=data,
-            max_token_lengths=[self.config["max_token_length"]] * data.shape[1],
+            col_names=self.col_names,
+            max_token_lengths=self.max_token_lengths,
             llm_model=model,
             tokenizer=tokenizer,
             device=self.device,
+            agg_key=self.agg_key,
+            batch_size=10,
+        )
+
+        return ModelData(
+            x=embeddings,
+            col_names=col_names,
+            data_types=[DataType.NUM] * embeddings.shape[1],
         )
 
 

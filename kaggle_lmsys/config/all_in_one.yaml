@@ -14,6 +14,7 @@ pipeline_basic_embedding_w2v:
   model_name: "glove-twitter-50"
   model_path: "/kaggle/working/w2v_models/w2v_glove-twitter-50"
   embedding_aggregator: "mean"
+  features: ["response"]
   pipeline_output_path: "/kaggle/working/basic_embedding_w2v_pipeline.pkl"
 
 pipeline_basic_embedding_deberta:
@@ -23,6 +24,11 @@ pipeline_basic_embedding_deberta:
   model_output_path: "/kaggle/working/model_output/"
   pipeline_output_path: "/kaggle/working/basic_embedding_deterta_pipeline.pkl"
   max_token_length: 256
+  features: ["response"]
+  embedding_aggregator: "mean"
+
+pipeline_basic_embedding_length_feature:
+  features: ["response"]
 
 pipeline_basic_embedding_tfidf:
   tfidf:
@@ -69,6 +75,25 @@ deberta_embedding_cosine_similarity_pipeline:
     ]
 
 classifier_lgbm_pipeline:
+  lgbm:
+    params:
+        n_estimators: 3000
+        subsample: 0.8
+        colsample_bytree: 0.8
+        objective: "multiclass"
+        num_class: 3
+        metric: "multi_logloss"
+        random_state: 123
+        learning_rate: 0.003
+        class_weight: "balanced"
+        verbose: -1
+    eval_pct: 0.2
+    early_stopping: 1000
+  seed: 123
+  output_path: "/kaggle/working/lgbm_model.pkl"
+
+
+model_type_classifier_lgbm_pipeline:
   lgbm:
     params:
         n_estimators: 3000
