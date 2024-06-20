@@ -18,6 +18,7 @@ def load_class(module_name: str, class_name: str) -> None:
 def get_diff_of_two_response(
     hidden_states: torch.Tensor,
     token_type_ids: torch.Tensor,
+    model_resp_len_diff_type_id: int,
     model_a_resp_token_type_id: int,
     model_b_resp_token_tupe_id: int,
 ) -> torch.Tensor:
@@ -35,12 +36,16 @@ def get_diff_of_two_response(
     mask_model_a_resp[token_type_ids == model_a_resp_token_type_id] = 1
     mask_model_b_resp = torch.zeros(token_type_ids.shape, dtype=int).to(hidden_states.device)
     mask_model_b_resp[token_type_ids == model_b_resp_token_tupe_id] = 1
+    mask_model_resp_len_diff = torch.zeros(token_type_ids.shape, dtype=int).to(hidden_states.device)
+    mask_model_resp_len_diff[token_type_ids == model_resp_len_diff_type_id] = 1
+
 
     model_a_resp = (hidden_states * mask_model_a_resp).mean(1)
     model_b_resp = (hidden_states * mask_model_b_resp).mean(1)
+    model_resp_len_diff = (hidden_states * mask_model_resp_len_diff).mean(1)
     model_a_b_resp_diff = model_a_resp - model_b_resp
 
-    return model_a_resp, model_b_resp, model_a_b_resp_diff
+    return model_a_resp, model_b_resp, model_a_b_resp_diff, model_resp_len_diff
 
 
 class CustomizedDetertaConfig(DebertaConfig):
@@ -66,15 +71,17 @@ class ModelResDiffPooler(nn.Module):
     def __init__(
         self,
         config: CustomizedDetertaConfig,
+        model_resp_len_diff_type_id: int,
         model_a_resp_token_type_id: int,
         model_b_resp_token_type_id: int,
     ):
         super().__init__()
         self.config = config
+        self.model_resp_len_diff_type_id = model_resp_len_diff_type_id
         self.model_a_resp_token_type_id = model_a_resp_token_type_id
         self.model_b_resp_token_type_id = model_b_resp_token_type_id
         self.dense_one = nn.Linear(
-            self.config.pooler_hidden_size * 3, self.config.pooler_hidden_size * 2,
+            self.config.pooler_hidden_size * 4, self.config.pooler_hidden_size * 2,
         )
         self.dense_two = nn.Linear(
             self.config.pooler_hidden_size * 2, self.config.pooler_hidden_size,
@@ -83,11 +90,15 @@ class ModelResDiffPooler(nn.Module):
         self.norm = nn.LayerNorm(self.config.hidden_size)
 
     def forward(self, data: torch.Tensor, token_type_ids: torch.Tensor):
-        model_a_resp, model_b_resp, model_resp_diff = get_diff_of_two_response(
-            data, token_type_ids, self.model_a_resp_token_type_id, self.model_b_resp_token_type_id,
+        model_a_resp, model_b_resp, model_resp_diff, model_resp_len_diff = get_diff_of_two_response(
+            data,
+            token_type_ids,
+            self.model_resp_len_diff_type_id,
+            self.model_a_resp_token_type_id,
+            self.model_b_resp_token_type_id,
         )
         hidden_states = torch.concatenate(
-            [model_a_resp, model_b_resp, model_resp_diff], axis=-1
+            [model_a_resp, model_b_resp, model_resp_diff, model_resp_len_diff], axis=-1
         )
         resp = self.dense_one(hidden_states)
         resp = self.dense_two(resp)
@@ -109,11 +120,13 @@ class CustomizedDetertaClassifier(DebertaForSequenceClassification):
         config: CustomizedDetertaConfig,
     ):
         super().__init__(config)
+        model_resp_len_diff_type_id = config.prompt_token_type_id
         model_a_resp_token_type_id = config.model_a_resp_token_type_id
         model_b_resp_token_type_id = config.model_b_resp_token_type_id
 
         self.pooler = ModelResDiffPooler(
             config,
+            model_resp_len_diff_type_id,
             model_a_resp_token_type_id,
             model_b_resp_token_type_id,
         )

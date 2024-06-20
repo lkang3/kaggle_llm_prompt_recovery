@@ -369,6 +369,107 @@ def tokenization_separate(
     return outputs
 
 
+def generate_sentence_diff_representation(sentence_one_len: int, sentence_two_len: int) -> str:
+    return f"The length difference of two responses is: {sentence_one_len-sentence_two_len}"
+
+
+def tokenization(
+    record: Dict,
+    tokenizer: AutoTokenizer,
+    max_token_length: int,
+    resp_a_field: str,
+    max_resp_a_token_length: int,
+    resp_b_field: str,
+    max_resp_b_token_length: int,
+    max_resp_len_diff_token_length: int,
+    target_field: str,
+) -> Dict:
+    if (
+        max_resp_a_token_length + max_resp_b_token_length
+    ) > max_token_length:
+        raise ValueError()
+
+    resp_a: str = record[resp_a_field]
+    resp_b: str = record[resp_b_field]
+    resp_len_diff: str = generate_sentence_diff_representation(len(resp_a), len(resp_b))
+    target_value = record[target_field] if target_field in record else None
+
+    input_ids_key = "input_ids"
+    token_type_ids_key = "token_type_ids"
+    attention_mask_key = "attention_mask"
+    pad_token = tokenizer(tokenizer.pad_token, add_special_tokens=False)
+
+    resp_a = tokenizer(
+        resp_a,
+        max_length=max_resp_a_token_length,
+        truncation=True,
+    )
+    resp_b = tokenizer(
+        resp_b,
+        max_length=max_resp_b_token_length,
+        truncation=True,
+    )
+    resp_len_diff = tokenizer(
+        resp_len_diff,
+        max_length=max_resp_len_diff_token_length,
+        truncation=True,
+    )
+
+    output_dtype = np.int32
+    token_input_ids = np.concatenate(
+        (
+            np.array(resp_len_diff[input_ids_key], dtype=output_dtype),
+            np.array(resp_a[input_ids_key], dtype=output_dtype),
+            np.array(resp_b[input_ids_key], dtype=output_dtype),
+        )
+    )
+    if len(token_input_ids) < max_token_length:
+        tmp = np.zeros(max_token_length, dtype=output_dtype)
+        tmp.fill(pad_token[input_ids_key][0])
+        tmp[: len(token_input_ids)] = token_input_ids
+        token_input_ids = tmp
+
+    resp_len_diff_type_ids = np.array(resp_len_diff[token_type_ids_key], dtype=output_dtype)
+    resp_len_diff_type_ids.fill(0)
+    resp_a_token_type_ids = np.array(resp_a[token_type_ids_key], dtype=output_dtype)
+    resp_a_token_type_ids.fill(1)
+    resp_b_token_type_ids = np.array(resp_b[token_type_ids_key], dtype=output_dtype)
+    resp_b_token_type_ids.fill(2)
+    token_type_ids = np.concatenate(
+        (
+            resp_len_diff_type_ids,
+            resp_a_token_type_ids,
+            resp_b_token_type_ids,
+        )
+    )
+    if len(token_type_ids) < max_token_length:
+        tmp = np.zeros(max_token_length, dtype=output_dtype)
+        tmp.fill(pad_token[input_ids_key][0])
+        tmp[: len(token_type_ids)] = token_type_ids
+        token_type_ids = tmp
+    attention_mask = np.concatenate(
+        (
+            np.array(resp_len_diff[attention_mask_key], dtype=output_dtype),
+            np.array(resp_a[attention_mask_key], dtype=output_dtype),
+            np.array(resp_b[attention_mask_key], dtype=output_dtype),
+        )
+    )
+    if len(attention_mask) < max_token_length:
+        tmp = np.zeros(max_token_length, dtype=output_dtype)
+        tmp.fill(pad_token[input_ids_key][0])
+        tmp[: len(attention_mask)] = attention_mask
+        attention_mask = tmp
+
+    outputs = {
+        input_ids_key: token_input_ids,
+        token_type_ids_key: token_type_ids,
+        attention_mask_key: attention_mask,
+    }
+    if target_value is not None:
+        outputs[target_field] = target_value
+    return outputs
+
+
 class Collator(DataCollatorWithPadding):
     device = get_device()
 

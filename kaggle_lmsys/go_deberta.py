@@ -16,7 +16,7 @@ from transformers import TrainingArguments
 from transformers import Trainer
 from utils import clean_data
 from utils import Collator
-from utils import tokenization_separate
+from utils import tokenization
 from utils import get_device
 from models.deberta_classifier import CustomizedDetertaClassifier
 
@@ -43,7 +43,6 @@ def go(
     for_test_pct: float,
 ) -> None:
     hf_login(hf_token)
-    device = get_device()
 
     data_config = {
         # "train_data_path": "/home/lkang/Downloads/lmsys-chatbot-arena/train.csv",
@@ -93,17 +92,16 @@ def go(
     )
     tokenization_args = {
         "tokenizer": tokenizer,
-        "prompt_field": data_config["prompt"],
         "resp_a_field": data_config["resp_a"],
         "resp_b_field": data_config["resp_b"],
-        "max_token_length": 574,
-        "max_prompt_token_length": 64,
+        "max_token_length": 530,
+        "max_resp_len_diff_token_length": 20,
         "max_resp_a_token_length": 255,
         "max_resp_b_token_length": 255,
         "target_field": add_target_field,
     }
     dataset = dataset.map(
-        function=tokenization_separate,
+        function=tokenization,
         batched=False,
         fn_kwargs=tokenization_args,
         remove_columns=dataset.column_names,
