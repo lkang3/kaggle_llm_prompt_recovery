@@ -32,12 +32,19 @@ torch_gen.manual_seed(0)
 numpy_gen = np.random.Generator(np.random.PCG64(seed=SEED))
 
 
-hf_token: str = "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"
-
-
 @click.command()
+@click.option("--hf_token", type=str, required=False)
 @click.option("--for_test", type=bool, default=False, required=True)
-def go(for_test: bool) -> None:
+@click.option("--for_test_pct", type=float, default=1.0, required=True)
+@click.option("--config_path", type=str, required=True)
+def go(
+    hf_token: str,
+    for_test: bool,
+    for_test_pct: float,
+    config_path: str,
+) -> None:
+    hf_login(hf_token)
+
     device = get_device()
 
     data_config = {
@@ -62,8 +69,11 @@ def go(for_test: bool) -> None:
     data_path = Path(data_config["train_data_path"])
     input_fields = [data_config["prompt"], data_config["resp_a"], data_config["resp_b"]]
     data = clean_data(data_path, input_fields)
+    data["model_a"] = data["model_a"].apply(lambda row: row.split("-")[0])
+    data["model_b"] = data["model_b"].apply(lambda row: row.split("-")[0])
     if for_test:
-        data = data.iloc[:100, :]
+        num_samples = int(for_test_pct * len(data))
+        data = data.iloc[:num_samples, :]
     train_data_config = {
         "prompt_field_name": data_config["prompt"],
         "response_field_name": "response",
@@ -143,5 +153,4 @@ def go(for_test: bool) -> None:
 
 if __name__ == "__main__":
     # ! python /kaggle/working/go_deberta.py --for_test=False
-    hf_login(hf_token)
     go()

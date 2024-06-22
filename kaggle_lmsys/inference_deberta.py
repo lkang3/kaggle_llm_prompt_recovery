@@ -23,6 +23,7 @@ numpy_gen = np.random.Generator(np.random.PCG64(seed=SEED))
 device = get_device()
 
 
+@torch.no_grad()
 @click.command()
 @click.option('--for_test', type=bool, default=False, required=True)
 def go(for_test: bool):

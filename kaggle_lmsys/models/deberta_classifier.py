@@ -1,6 +1,7 @@
 from typing import Optional, Union, Tuple
 
 import torch
+from sentence_transformers import SentenceTransformer
 from torch import nn
 from torch.nn import CrossEntropyLoss, MSELoss, BCEWithLogitsLoss
 from transformers import DebertaConfig, DebertaForSequenceClassification
@@ -112,24 +113,11 @@ class ModelResDiffPooler(nn.Module):
         return self.config.hidden_size
 
 
-class CustomizedDetertaClassifier(DebertaForSequenceClassification):
-    config_class = CustomizedDetertaConfig
-
-    def __init__(
-        self,
-        config: CustomizedDetertaConfig,
-    ):
-        super().__init__(config)
-        model_resp_len_diff_type_id = config.prompt_token_type_id
-        model_a_resp_token_type_id = config.model_a_resp_token_type_id
-        model_b_resp_token_type_id = config.model_b_resp_token_type_id
-
-        self.pooler = ModelResDiffPooler(
-            config,
-            model_resp_len_diff_type_id,
-            model_a_resp_token_type_id,
-            model_b_resp_token_type_id,
-        )
+class EasyCustomizableDebertaForSequenceClassification(DebertaForSequenceClassification):
+    def _get_logits(self, encoder_layer, token_type_ids, attention_mask):
+        pooled_output = self.pooler(encoder_layer)
+        pooled_output = self.dropout(pooled_output)
+        return self.classifier(pooled_output)
 
     def forward(
         self,
@@ -163,9 +151,7 @@ class CustomizedDetertaClassifier(DebertaForSequenceClassification):
         )
 
         encoder_layer = outputs[0]
-        pooled_output = self.pooler(encoder_layer, token_type_ids)
-        pooled_output = self.dropout(pooled_output)
-        logits = self.classifier(pooled_output)
+        logits = self._get_logits(encoder_layer, token_type_ids, attention_mask)
 
         loss = None
         if labels is not None:
@@ -211,5 +197,32 @@ class CustomizedDetertaClassifier(DebertaForSequenceClassification):
         )
 
 
+class CustomizedDetertaClassifier(EasyCustomizableDebertaForSequenceClassification):
+    config_class = CustomizedDetertaConfig
+
+    def __init__(
+        self,
+        config: CustomizedDetertaConfig,
+    ):
+        super().__init__(config)
+        model_resp_len_diff_type_id = config.prompt_token_type_id
+        model_a_resp_token_type_id = config.model_a_resp_token_type_id
+        model_b_resp_token_type_id = config.model_b_resp_token_type_id
+
+        self.pooler = ModelResDiffPooler(
+            config,
+            model_resp_len_diff_type_id,
+            model_a_resp_token_type_id,
+            model_b_resp_token_type_id,
+        )
+
+    def _get_logits(self, encoder_layer, token_type_ids, attention_mask):
+        pooled_output = self.pooler(encoder_layer, token_type_ids)
+        pooled_output = self.dropout(pooled_output)
+        return self.classifier(pooled_output)
+
+
 AutoConfig.register("CustomizedDetertaClassifier", CustomizedDetertaConfig)
 AutoModelForSequenceClassification.register(CustomizedDetertaConfig, CustomizedDetertaClassifier)
+AutoConfig.register("CustomizedDetertaClassifier2", CustomizedDetertaConfig)
+AutoModelForSequenceClassification.register(CustomizedDetertaConfig, CustomizedDetertaClassifier2)
