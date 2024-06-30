@@ -140,5 +140,5 @@ def go(
 
 
 if __name__ == "__main__":
-    # python ./kaggle_lmsys/go_silos.py --hf_token=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 --for_test=True --for_test_pct=0.002 --config_path=./kaggle_lmsys/config/all_in_one.yaml
+    # python ./kaggle_lmsys/go_silos.py --hf_token= --for_test=True --for_test_pct=0.002 --config_path=./kaggle_lmsys/config/all_in_one.yaml
     go()
