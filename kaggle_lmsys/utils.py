@@ -1,8 +1,10 @@
+import copy
 import logging
 import time
 import sys
 from collections import defaultdict
 from pathlib import Path
+from typing import Any
 from typing import Dict
 from typing import List
 from typing import Optional
@@ -282,7 +284,7 @@ def tokenization_separate(
     resp_b_field: str,
     max_resp_b_token_length: int,
     target_field: str,
-) -> Dict:
+) -> Dict[str, np.ndarray]:
     if (
         max_prompt_token_length + max_resp_a_token_length + max_resp_b_token_length
     ) > max_token_length:
@@ -293,27 +295,24 @@ def tokenization_separate(
     resp_b: str = record[resp_b_field]
     target_value = record[target_field] if target_field in record else None
 
+    tokenizer_params = {
+        "truncation": True,
+        "padding": "max_length",
+        "add_special_tokens": False,
+    }
+    tokenizer_params["max_length"] = max_prompt_token_length
+    tokenizer_params["text"] = prompt
+    prompt = tokenizer(**tokenizer_params)
+    tokenizer_params["max_length"] = max_resp_a_token_length
+    tokenizer_params["text"] = resp_a
+    resp_a = tokenizer(**tokenizer_params)
+    tokenizer_params["max_length"] = max_resp_b_token_length
+    tokenizer_params["text"] = resp_b
+    resp_b = tokenizer(**tokenizer_params)
+
     input_ids_key = "input_ids"
     token_type_ids_key = "token_type_ids"
     attention_mask_key = "attention_mask"
-    pad_token = tokenizer(tokenizer.pad_token, add_special_tokens=False)
-
-    prompt = tokenizer(
-        prompt,
-        max_length=max_prompt_token_length,
-        truncation=True,
-    )
-    resp_a = tokenizer(
-        resp_a,
-        max_length=max_resp_a_token_length,
-        truncation=True,
-    )
-    resp_b = tokenizer(
-        resp_b,
-        max_length=max_resp_b_token_length,
-        truncation=True,
-    )
-
     output_dtype = np.int32
     token_input_ids = np.concatenate(
         (
@@ -322,17 +321,11 @@ def tokenization_separate(
             np.array(resp_b[input_ids_key], dtype=output_dtype),
         )
     )
-    if len(token_input_ids) < max_token_length:
-        tmp = np.zeros(max_token_length, dtype=output_dtype)
-        tmp.fill(pad_token[input_ids_key][0])
-        tmp[: len(token_input_ids)] = token_input_ids
-        token_input_ids = tmp
-
-    prompt_token_type_ids = np.array(prompt[token_type_ids_key], dtype=output_dtype)
+    prompt_token_type_ids = np.ones(len(prompt[input_ids_key]), dtype=output_dtype)
     prompt_token_type_ids.fill(0)
-    resp_a_token_type_ids = np.array(resp_a[token_type_ids_key], dtype=output_dtype)
+    resp_a_token_type_ids = np.ones(len(resp_a[input_ids_key]), dtype=output_dtype)
     resp_a_token_type_ids.fill(1)
-    resp_b_token_type_ids = np.array(resp_b[token_type_ids_key], dtype=output_dtype)
+    resp_b_token_type_ids = np.ones(len(resp_b[input_ids_key]), dtype=output_dtype)
     resp_b_token_type_ids.fill(2)
     token_type_ids = np.concatenate(
         (
@@ -341,11 +334,7 @@ def tokenization_separate(
             resp_b_token_type_ids,
         )
     )
-    if len(token_type_ids) < max_token_length:
-        tmp = np.zeros(max_token_length, dtype=output_dtype)
-        tmp.fill(pad_token[input_ids_key][0])
-        tmp[: len(token_type_ids)] = token_type_ids
-        token_type_ids = tmp
+
     attention_mask = np.concatenate(
         (
             np.array(prompt[attention_mask_key], dtype=output_dtype),
@@ -353,12 +342,6 @@ def tokenization_separate(
             np.array(resp_b[attention_mask_key], dtype=output_dtype),
         )
     )
-    if len(attention_mask) < max_token_length:
-        tmp = np.zeros(max_token_length, dtype=output_dtype)
-        tmp.fill(pad_token[input_ids_key][0])
-        tmp[: len(attention_mask)] = attention_mask
-        attention_mask = tmp
-
     outputs = {
         input_ids_key: token_input_ids,
         token_type_ids_key: token_type_ids,
@@ -466,7 +449,7 @@ def tokenization(
         attention_mask_key: attention_mask,
     }
     if target_value is not None:
-        outputs[target_field] = target_value
+        outputs[target_field] = [target_value]
     return outputs
 
 

@@ -2,6 +2,8 @@ seed: 123
 data:
   train_data_path: "/kaggle/input/lmsys-chatbot-arena/train.csv"
   test_data_path: "/kaggle/input/lmsys-chatbot-arena/test.csv"
+#  train_data_path: "/home/lkang/Downloads/lmsys-chatbot-arena/train.csv"
+#  test_data_path: "/home/lkang/Downloads/lmsys-chatbot-arena/test.csv"
   prompt: "prompt"
   resp_a: "response_a"
   resp_b: "response_b"
@@ -110,3 +112,21 @@ model_type_classifier_lgbm_pipeline:
     early_stopping: 1000
   seed: 123
   output_path: "/kaggle/working/lgbm_model.pkl"
+
+
+silo_classifier:
+  tokenizer:
+    name: "sentence-transformers/all-mpnet-base-v2"
+    max_prompt_token_length: 64
+    max_resp_a_token_length: 255
+    max_resp_b_token_length: 255
+  classifier:
+    name: "sentence-transformers/all-mpnet-base-v2"
+    num_labels: 3
+    max_length: 574
+  train:
+    train_pct: 0.8
+    eval_pct: 0.2
+    learning_rate: 0.002
+    train_batch_size: 5
+    num_epoch: 1

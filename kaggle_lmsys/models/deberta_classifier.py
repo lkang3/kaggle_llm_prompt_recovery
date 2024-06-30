@@ -1,7 +1,6 @@
 from typing import Optional, Union, Tuple
 
 import torch
-from sentence_transformers import SentenceTransformer
 from torch import nn
 from torch.nn import CrossEntropyLoss, MSELoss, BCEWithLogitsLoss
 from transformers import DebertaConfig, DebertaForSequenceClassification
@@ -224,5 +223,3 @@ class CustomizedDetertaClassifier(EasyCustomizableDebertaForSequenceClassificati
 
 AutoConfig.register("CustomizedDetertaClassifier", CustomizedDetertaConfig)
 AutoModelForSequenceClassification.register(CustomizedDetertaConfig, CustomizedDetertaClassifier)
-AutoConfig.register("CustomizedDetertaClassifier2", CustomizedDetertaConfig)
-AutoModelForSequenceClassification.register(CustomizedDetertaConfig, CustomizedDetertaClassifier2)
