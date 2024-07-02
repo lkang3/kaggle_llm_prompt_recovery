@@ -129,4 +129,4 @@ silo_classifier:
     eval_pct: 0.2
     learning_rate: 0.002
     train_batch_size: 5
-    num_epoch: 1
+    num_epoch: 2

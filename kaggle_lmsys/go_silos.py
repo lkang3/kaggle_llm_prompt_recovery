@@ -13,6 +13,7 @@ from kaggle_lmsys.train_utils import add_target
 from transformers import AutoTokenizer
 from transformers import TrainingArguments
 from transformers import Trainer
+from transformers.optimization import Adafactor, AdafactorSchedule
 from kaggle_lmsys.utils import clean_data
 from kaggle_lmsys.utils import Collator
 from kaggle_lmsys.utils import tokenization_separate
@@ -112,15 +113,20 @@ def go(
     )
     train_batch_size: int = training_config["train_batch_size"]
     model_output_dir: str = "model_output"
+
+    optimizer = Adafactor(
+        model.parameters(), scale_parameter=True, relative_step=True, warmup_init=True, lr=None,
+    )
+    lr_scheduler = AdafactorSchedule(optimizer)
     trainer = Trainer(
         model=model,
         train_dataset=dataset_train,
         eval_dataset=dataset_eval,
+        optimizers=(optimizer, lr_scheduler),
         args=TrainingArguments(
             per_device_train_batch_size=train_batch_size,
             num_train_epochs=training_config["num_epoch"],
             warmup_steps=0.03,
-            learning_rate=training_config["learning_rate"],
             logging_steps=1,
             output_dir=model_output_dir,
             optim="paged_adamw_8bit",
